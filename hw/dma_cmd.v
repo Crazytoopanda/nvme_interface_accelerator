@@ -169,7 +169,9 @@ wire	[7:6]								w_prp_fifo_free_len;
 wire										w_prp_fifo_empty_n;
 
 
-dma_cmd_fifo
+dma_cmd_fifo #(
+	.P_FIFO_DATA_WIDTH						(C_M_AXI_ADDR_WIDTH+24)
+)
 dma_cmd_fifo_inst0
 (
 	.wr_clk									(cpu_bus_clk),
@@ -320,7 +322,7 @@ dma_cmd_gen_inst0
 
 pcie_dma_cmd_gen # (
 	.P_SLOT_TAG_WIDTH						(P_SLOT_TAG_WIDTH), //slot_modified
-	.C_M_AXI_ADDR_WIDTH					(C_M_AXI_ADDR_WIDTH)
+	.C_PCIE_ADDR_WIDTH					(C_PCIE_ADDR_WIDTH)
 )
 pcie_dma_cmd_gen_inst0
 (

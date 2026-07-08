@@ -73,6 +73,8 @@
 #include "nvme/nvme_main.h"
 #include "nvme/host_lld.h"
 
+#include "memory_map.h"
+
 
 XScuGic GicInstance;
 
@@ -86,7 +88,7 @@ int main()
 	Xil_DCacheDisable();
 
 	// Paging table set
-	#define MB (1024*1024)
+	#define MB (1024ULL * 1024ULL)
 	for (u = 0; u < 4096; u+=2)
 	{
 		if (u < 0x2)
@@ -99,6 +101,12 @@ int main()
 			Xil_SetTlbAttributes(u * MB, NORM_NONCACHE);
 		else
 			Xil_SetTlbAttributes(u * MB, STRONG_ORDERED);
+	}
+
+	for (u64 addr = DRAM_START_ADDR;
+		addr <= DRAM_END_ADDR; addr += 2 * MB)
+	{
+		Xil_SetTlbAttributes(addr, NORM_WB_CACHE);
 	}
 
 	Xil_ICacheEnable();

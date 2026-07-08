@@ -75,7 +75,7 @@ void nvme_main()
 	unsigned int rstCnt = 0;
 	unsigned char *p_storage = (unsigned char *)DATA_BUFFER_BASE_ADDR;
 
-	memset(p_storage, 0xFF, NVME_STORAGE);
+	memset(p_storage, 0xFF, NVME_STORAGE_ERASING);
 
 	xil_printf("[ storage capacity %d MB ]\r\n", STORAGE_CAPACITY_L / ((1024*1024) * BYTES_PER_NVME_BLOCK));
 

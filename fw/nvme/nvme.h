@@ -56,7 +56,8 @@
 
 #define ADMIN_CMD_DRAM_DATA_BUFFER		0x00200000
 
-#define NVME_STORAGE                    (32 * 1024 * 1024 * 1024) /* 32GB */
+#define NVME_STORAGE                    (63ULL * 1024ULL * 1024ULL * 1024ULL) /* 63GiB */
+#define NVME_STORAGE_ERASING            (1ULL * 1024ULL * 1024ULL * 1024ULL) /* 1GiB */
 #define	BYTES_PER_NVME_BLOCK		    (4096)               /* 4KB */
 
 #define STORAGE_CAPACITY_L				(NVME_STORAGE / BYTES_PER_NVME_BLOCK)

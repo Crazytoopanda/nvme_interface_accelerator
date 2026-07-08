@@ -332,7 +332,7 @@ localparam LP_DOB_REG = 0;
 localparam LP_READ_WIDTH = P_FIFO_DATA_WIDTH;
 localparam LP_WRITE_WIDTH = P_FIFO_DATA_WIDTH;
 localparam LP_WRITE_MODE = "WRITE_FIRST";
-localparam LP_WE_WIDTH = 4;
+localparam LP_WE_WIDTH = (P_FIFO_DATA_WIDTH + 7)/8;
 localparam LP_ADDR_TOTAL_WITDH = 9;
 localparam LP_ADDR_ZERO_PAD_WITDH = LP_ADDR_TOTAL_WITDH - P_FIFO_DEPTH_WIDTH;
 

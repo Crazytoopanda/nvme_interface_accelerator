@@ -59,7 +59,7 @@
 
 // Uncached & Unbuffered
 //for data buffer
-#define DATA_BUFFER_BASE_ADDR 			0x5400000000ULL
-#define DRAM_END_ADDR				    0x57FFFFFFFFULL
+#define DATA_BUFFER_BASE_ADDR 			0x5040000000ULL
+#define DRAM_END_ADDR				    0x5FFFFFFFFFULL
 
 #endif /* MEMORY_MAP_H_ */

@@ -432,8 +432,12 @@ end
 localparam LP_DEVICE = "7SERIES";
 localparam LP_BRAM_SIZE = "36Kb";
 localparam LP_DOB_REG = 0;
-localparam LP_READ_WIDTH = P_FIFO_DATA_WIDTH;
-localparam LP_WRITE_WIDTH = P_FIFO_DATA_WIDTH;
+localparam LP_DATA_LOW_WIDTH = (P_FIFO_DATA_WIDTH + 1)/2;
+localparam LP_DATA_HIGH_WIDTH = P_FIFO_DATA_WIDTH - LP_DATA_LOW_WIDTH;
+localparam LP_READ_WIDTH_LOW = LP_DATA_LOW_WIDTH;
+localparam LP_WRITE_WIDTH_LOW = LP_DATA_LOW_WIDTH;
+localparam LP_READ_WIDTH_HIGH = LP_DATA_HIGH_WIDTH;
+localparam LP_WRITE_WIDTH_HIGH = LP_DATA_HIGH_WIDTH;
 localparam LP_WRITE_MODE = "WRITE_FIRST";
 localparam LP_WE_WIDTH = 8;
 localparam LP_ADDR_TOTAL_WITDH = 9;
@@ -457,22 +461,49 @@ generate
 endgenerate
 
 
+wire [LP_DATA_LOW_WIDTH-1:0] w_rd_data_low;
+wire [LP_DATA_HIGH_WIDTH-1:0] w_rd_data_high;
+
+assign rd_data = {w_rd_data_high, w_rd_data_low};
+
 BRAM_SDP_MACRO #(
 	.DEVICE									(LP_DEVICE),
 	.BRAM_SIZE								(LP_BRAM_SIZE),
 	.DO_REG									(LP_DOB_REG),
-	.READ_WIDTH								(LP_READ_WIDTH),
-	.WRITE_WIDTH							(LP_WRITE_WIDTH),
+	.READ_WIDTH								(LP_READ_WIDTH_LOW),
+	.WRITE_WIDTH							(LP_WRITE_WIDTH_LOW),
 	.WRITE_MODE								(LP_WRITE_MODE)
 )
-ramb36sdp_0(
-	.DO										(rd_data),
-	.DI										(r_wr_data),
+ramb36sdp_low(
+	.DO										(w_rd_data_low),
+	.DI										(r_wr_data[LP_DATA_LOW_WIDTH-1:0]),
 	.RDADDR									(rdaddr),
 	.RDCLK									(rd_clk),
 	.RDEN									(1'b1),
 	.REGCE									(1'b1),
-	.RST									(1'b0),
+	.RST										(1'b0),
+	.WE										({LP_WE_WIDTH{1'b1}}),
+	.WRADDR									(wraddr),
+	.WRCLK									(wr_clk),
+	.WREN									(r_wr_en)
+);
+
+BRAM_SDP_MACRO #(
+	.DEVICE									(LP_DEVICE),
+	.BRAM_SIZE								(LP_BRAM_SIZE),
+	.DO_REG									(LP_DOB_REG),
+	.READ_WIDTH								(LP_READ_WIDTH_HIGH),
+	.WRITE_WIDTH							(LP_WRITE_WIDTH_HIGH),
+	.WRITE_MODE								(LP_WRITE_MODE)
+)
+ramb36sdp_high(
+	.DO										(w_rd_data_high),
+	.DI										(r_wr_data[P_FIFO_DATA_WIDTH-1:LP_DATA_LOW_WIDTH]),
+	.RDADDR									(rdaddr),
+	.RDCLK									(rd_clk),
+	.RDEN									(1'b1),
+	.REGCE									(1'b1),
+	.RST										(1'b0),
 	.WE										({LP_WE_WIDTH{1'b1}}),
 	.WRADDR									(wraddr),
 	.WRCLK									(wr_clk),

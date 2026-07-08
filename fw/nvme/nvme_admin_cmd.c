@@ -46,6 +46,7 @@
 
 
 #include "xil_printf.h"
+#include "xil_cache.h"
 #include "debug.h"
 #include "string.h"
 #include "io_access.h"
@@ -54,6 +55,7 @@
 #include "host_lld.h"
 #include "nvme_identify.h"
 #include "nvme_admin_cmd.h"
+#include "../memory_map.h"
 
 extern NVME_CONTEXT g_nvmeTask;
 
@@ -358,9 +360,12 @@ void handle_delete_io_cq(NVME_ADMIN_COMMAND *nvmeAdminCmd, NVME_COMPLETION *nvme
 void handle_identify(NVME_ADMIN_COMMAND *nvmeAdminCmd, NVME_COMPLETION *nvmeCPL)
 {
 	ADMIN_IDENTIFY_COMMAND_DW10 identifyInfo;
-	unsigned int pIdentifyData = ADMIN_CMD_DRAM_DATA_BUFFER;
+	unsigned long long pIdentifyData = NVME_MANAGEMENT_START_ADDR;
+	unsigned long long pIdentifyBase = pIdentifyData;
+	volatile unsigned int *identifyWords;
 	unsigned int prp[2];
 	unsigned int prpLen;
+	unsigned int idx;
 
 	identifyInfo.dword = nvmeAdminCmd->dword10;
 
@@ -383,6 +388,18 @@ void handle_identify(NVME_ADMIN_COMMAND *nvmeAdminCmd, NVME_COMPLETION *nvmeCPL)
 	}
 	else
 		ASSERT(0);
+
+	Xil_DCacheFlushRange((UINTPTR)pIdentifyBase, 0x1000);
+	// identifyWords = (volatile unsigned int *)pIdentifyBase;
+	// xil_printf("[Identify] CNS=%X buf=%08X_%08X PRP1=%08X_%08X PRP2=%08X_%08X\r\n",
+	// 		identifyInfo.CNS,
+	// 		(unsigned int)(pIdentifyBase >> 32), (unsigned int)pIdentifyBase,
+	// 		nvmeAdminCmd->PRP1[1], nvmeAdminCmd->PRP1[0],
+	// 		nvmeAdminCmd->PRP2[1], nvmeAdminCmd->PRP2[0]);
+	// xil_printf("[Identify] first dwords:");
+	// for(idx = 0; idx < 8; idx++)
+	// 	xil_printf(" %08X", identifyWords[idx]);
+	// xil_printf("\r\n");
 	
 	prp[0] = nvmeAdminCmd->PRP1[0];
 	prp[1] = nvmeAdminCmd->PRP1[1];
@@ -536,6 +553,16 @@ void handle_nvme_admin_cmd(NVME_COMMAND *nvmeCmd)
 			break;
 		}
 	}
+
+	/* if CQE error, we try it as below */
+	// if(needCpl == 1) {
+	// 	set_nvme_cpl(nvmeCmd->qID, nvmeAdminCmd->CID,
+	// 			nvmeCPL.specific, nvmeCPL.statusFieldWord);
+	// 	set_nvme_slot_release(nvmeCmd->cmdSlotTag);
+	// }
+	// else if(needSlotRelease == 1) {
+	// 	set_nvme_slot_release(nvmeCmd->cmdSlotTag);
+	// }
 
 	if(needCpl == 1)
 		set_auto_nvme_cpl(nvmeCmd->cmdSlotTag, nvmeCPL.specific, nvmeCPL.statusFieldWord);

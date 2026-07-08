@@ -560,8 +560,8 @@ begin
 //			r_awaddr_pcie_reg_en <= (r_s_axi_awaddr[15:8] == 8'h1);
 			r_awaddr_nvme_reg_en <= (r_s_axi_awaddr[15:8] == 8'h2);
 			r_awaddr_nvme_fifo_en <= (r_s_axi_awaddr[15:8] == 8'h3);
-			r_awaddr_hcmd_cq_wr1_en <= (r_s_axi_awaddr[15:2] == 14'hC3);
-			r_awaddr_dma_cmd_wr_en <= (r_s_axi_awaddr[15:2] == 14'hC8); //slot_modified
+			r_awaddr_hcmd_cq_wr1_en <= (r_s_axi_awaddr[15:2] == 14'hD0);
+			r_awaddr_dma_cmd_wr_en <= (r_s_axi_awaddr[15:2] == 14'hCC); //slot_modified
 		end
 		S_W_READY: begin
 			r_wdata <= s_axi_wdata;
@@ -1128,74 +1128,78 @@ end
 
 always @ (*)
 begin
+	r_cntl_reg_rdata = 32'h0;
 	case(r_s_axi_araddr[7:2]) // synthesis parallel_case full_case
-		6'h01: r_cntl_reg_rdata <= {20'b0, r_irq_mask};
-		6'h03: r_cntl_reg_rdata <= {20'b0, r_irq_set};
+		6'h01: r_cntl_reg_rdata = {20'b0, r_irq_mask};
+		6'h03: r_cntl_reg_rdata = {20'b0, r_irq_set};
 	endcase
 end
 
 always @ (*)
 begin
+	r_pcie_reg_rdata = 32'h0;
 	case(r_s_axi_araddr[7:2]) // synthesis parallel_case full_case
-		6'h00: r_pcie_reg_rdata <= {23'b0, r_pcie_link_up, 2'b0, pl_ltssm_state};
-		6'h01: r_pcie_reg_rdata <= {25'b0, r_cfg_interrupt_mmenable, ~r_cfg_command[3], r_cfg_interrupt_msixenable, r_cfg_interrupt_msienable, r_cfg_command[2]};
+		6'h00: r_pcie_reg_rdata = {23'b0, r_pcie_link_up, 2'b0, pl_ltssm_state};
+		6'h01: r_pcie_reg_rdata = {25'b0, r_cfg_interrupt_mmenable, ~r_cfg_command[3], r_cfg_interrupt_msixenable, r_cfg_interrupt_msienable, r_cfg_command[2]};
 	endcase
 end
 
 always @ (*)
 begin
+	r_nvme_reg_rdata = 32'h0;
 	case(r_s_axi_araddr[7:2]) //modified all
-		6'h00: r_nvme_reg_rdata <= {25'b0, r_nvme_csts_shst, r_nvme_csts_rdy, 1'b0, r_nvme_cc_shn, r_nvme_cc_en};
-		6'h01: r_nvme_reg_rdata <= {dma_tx_done_cnt, dma_rx_done_cnt, dma_tx_direct_done_cnt, dma_rx_direct_done_cnt};
-		6'h07: r_nvme_reg_rdata <= {19'b0, r_io_cq_irq_en[0], r_sq_valid[0], r_cq_valid[0]};
-		6'h08: r_nvme_reg_rdata <= {r_io_sq1_bs_addr[31:2], 2'b0};
-		6'h09: r_nvme_reg_rdata <= {r_io_sq1_size, 3'b0, r_io_sq1_cq_vec, r_sq_valid[1], r_io_sq1_bs_addr[C_PCIE_ADDR_WIDTH-1:32]};
-		6'h0A: r_nvme_reg_rdata <= {r_io_sq2_bs_addr[31:2], 2'b0};
-		6'h0B: r_nvme_reg_rdata <= {r_io_sq2_size, 3'b0, r_io_sq2_cq_vec, r_sq_valid[2], r_io_sq2_bs_addr[C_PCIE_ADDR_WIDTH-1:32]};
-		6'h0C: r_nvme_reg_rdata <= {r_io_sq3_bs_addr[31:2], 2'b0};
-		6'h0D: r_nvme_reg_rdata <= {r_io_sq3_size, 3'b0, r_io_sq3_cq_vec, r_sq_valid[3], r_io_sq3_bs_addr[C_PCIE_ADDR_WIDTH-1:32]};
-		6'h0E: r_nvme_reg_rdata <= {r_io_sq4_bs_addr[31:2], 2'b0};
-		6'h0F: r_nvme_reg_rdata <= {r_io_sq4_size, 3'b0, r_io_sq4_cq_vec, r_sq_valid[4], r_io_sq4_bs_addr[C_PCIE_ADDR_WIDTH-1:32]};
-		6'h10: r_nvme_reg_rdata <= {r_io_sq5_bs_addr[31:2], 2'b0};
-		6'h11: r_nvme_reg_rdata <= {r_io_sq5_size, 3'b0, r_io_sq5_cq_vec, r_sq_valid[5], r_io_sq5_bs_addr[C_PCIE_ADDR_WIDTH-1:32]};
-		6'h12: r_nvme_reg_rdata <= {r_io_sq6_bs_addr[31:2], 2'b0};
-		6'h13: r_nvme_reg_rdata <= {r_io_sq6_size, 3'b0, r_io_sq6_cq_vec, r_sq_valid[6], r_io_sq6_bs_addr[C_PCIE_ADDR_WIDTH-1:32]};
-		6'h14: r_nvme_reg_rdata <= {r_io_sq7_bs_addr[31:2], 2'b0};
-		6'h15: r_nvme_reg_rdata <= {r_io_sq7_size, 3'b0, r_io_sq7_cq_vec, r_sq_valid[7], r_io_sq7_bs_addr[C_PCIE_ADDR_WIDTH-1:32]};
-		6'h16: r_nvme_reg_rdata <= {r_io_sq8_bs_addr[31:2], 2'b0};
-		6'h17: r_nvme_reg_rdata <= {r_io_sq8_size, 3'b0, r_io_sq8_cq_vec, r_sq_valid[8], r_io_sq8_bs_addr[C_PCIE_ADDR_WIDTH-1:32]};
-		6'h18: r_nvme_reg_rdata <= {r_io_cq1_bs_addr[31:2], 2'b0};
-		6'h19: r_nvme_reg_rdata <= {r_io_cq1_size, 3'b0, r_io_cq_irq_en[1], r_io_cq1_iv, r_cq_valid[1], r_io_cq1_bs_addr[C_PCIE_ADDR_WIDTH-1:32]};
-		6'h1A: r_nvme_reg_rdata <= {r_io_cq2_bs_addr[31:2], 2'b0};
-		6'h1B: r_nvme_reg_rdata <= {r_io_cq2_size, 3'b0, r_io_cq_irq_en[2], r_io_cq2_iv, r_cq_valid[2], r_io_cq2_bs_addr[C_PCIE_ADDR_WIDTH-1:32]};
-		6'h1C: r_nvme_reg_rdata <= {r_io_cq3_bs_addr[31:2], 2'b0};
-		6'h1D: r_nvme_reg_rdata <= {r_io_cq3_size, 3'b0, r_io_cq_irq_en[3], r_io_cq3_iv, r_cq_valid[3], r_io_cq3_bs_addr[C_PCIE_ADDR_WIDTH-1:32]};
-		6'h1E: r_nvme_reg_rdata <= {r_io_cq4_bs_addr[31:2], 2'b0};
-		6'h1F: r_nvme_reg_rdata <= {r_io_cq4_size, 3'b0, r_io_cq_irq_en[4], r_io_cq4_iv, r_cq_valid[4], r_io_cq4_bs_addr[C_PCIE_ADDR_WIDTH-1:32]};
-		6'h20: r_nvme_reg_rdata <= {r_io_cq5_bs_addr[31:2], 2'b0};
-		6'h21: r_nvme_reg_rdata <= {r_io_cq5_size, 3'b0, r_io_cq_irq_en[5], r_io_cq5_iv, r_cq_valid[5], r_io_cq5_bs_addr[C_PCIE_ADDR_WIDTH-1:32]};
-		6'h22: r_nvme_reg_rdata <= {r_io_cq6_bs_addr[31:2], 2'b0};
-		6'h23: r_nvme_reg_rdata <= {r_io_cq6_size, 3'b0, r_io_cq_irq_en[6], r_io_cq6_iv, r_cq_valid[6], r_io_cq6_bs_addr[C_PCIE_ADDR_WIDTH-1:32]};
-		6'h24: r_nvme_reg_rdata <= {r_io_cq7_bs_addr[31:2], 2'b0};
-		6'h25: r_nvme_reg_rdata <= {r_io_cq7_size, 3'b0, r_io_cq_irq_en[7], r_io_cq7_iv, r_cq_valid[7], r_io_cq7_bs_addr[C_PCIE_ADDR_WIDTH-1:32]};
-		6'h26: r_nvme_reg_rdata <= {r_io_cq8_bs_addr[31:2], 2'b0};
-		6'h27: r_nvme_reg_rdata <= {r_io_cq8_size, 3'b0, r_io_cq_irq_en[8], r_io_cq8_iv, r_cq_valid[8], r_io_cq8_bs_addr[C_PCIE_ADDR_WIDTH-1:32]};
+		6'h00: r_nvme_reg_rdata = {25'b0, r_nvme_csts_shst, r_nvme_csts_rdy, 1'b0, r_nvme_cc_shn, r_nvme_cc_en};
+		6'h01: r_nvme_reg_rdata = {dma_tx_done_cnt, dma_rx_done_cnt, dma_tx_direct_done_cnt, dma_rx_direct_done_cnt};
+		6'h07: r_nvme_reg_rdata = {19'b0, r_io_cq_irq_en[0], r_sq_valid[0], r_cq_valid[0]};
+		6'h08: r_nvme_reg_rdata = {r_io_sq1_bs_addr[31:2], 2'b0};
+		6'h09: r_nvme_reg_rdata = {r_io_sq1_size, 3'b0, r_io_sq1_cq_vec, r_sq_valid[1], r_io_sq1_bs_addr[C_PCIE_ADDR_WIDTH-1:32]};
+		6'h0A: r_nvme_reg_rdata = {r_io_sq2_bs_addr[31:2], 2'b0};
+		6'h0B: r_nvme_reg_rdata = {r_io_sq2_size, 3'b0, r_io_sq2_cq_vec, r_sq_valid[2], r_io_sq2_bs_addr[C_PCIE_ADDR_WIDTH-1:32]};
+		6'h0C: r_nvme_reg_rdata = {r_io_sq3_bs_addr[31:2], 2'b0};
+		6'h0D: r_nvme_reg_rdata = {r_io_sq3_size, 3'b0, r_io_sq3_cq_vec, r_sq_valid[3], r_io_sq3_bs_addr[C_PCIE_ADDR_WIDTH-1:32]};
+		6'h0E: r_nvme_reg_rdata = {r_io_sq4_bs_addr[31:2], 2'b0};
+		6'h0F: r_nvme_reg_rdata = {r_io_sq4_size, 3'b0, r_io_sq4_cq_vec, r_sq_valid[4], r_io_sq4_bs_addr[C_PCIE_ADDR_WIDTH-1:32]};
+		6'h10: r_nvme_reg_rdata = {r_io_sq5_bs_addr[31:2], 2'b0};
+		6'h11: r_nvme_reg_rdata = {r_io_sq5_size, 3'b0, r_io_sq5_cq_vec, r_sq_valid[5], r_io_sq5_bs_addr[C_PCIE_ADDR_WIDTH-1:32]};
+		6'h12: r_nvme_reg_rdata = {r_io_sq6_bs_addr[31:2], 2'b0};
+		6'h13: r_nvme_reg_rdata = {r_io_sq6_size, 3'b0, r_io_sq6_cq_vec, r_sq_valid[6], r_io_sq6_bs_addr[C_PCIE_ADDR_WIDTH-1:32]};
+		6'h14: r_nvme_reg_rdata = {r_io_sq7_bs_addr[31:2], 2'b0};
+		6'h15: r_nvme_reg_rdata = {r_io_sq7_size, 3'b0, r_io_sq7_cq_vec, r_sq_valid[7], r_io_sq7_bs_addr[C_PCIE_ADDR_WIDTH-1:32]};
+		6'h16: r_nvme_reg_rdata = {r_io_sq8_bs_addr[31:2], 2'b0};
+		6'h17: r_nvme_reg_rdata = {r_io_sq8_size, 3'b0, r_io_sq8_cq_vec, r_sq_valid[8], r_io_sq8_bs_addr[C_PCIE_ADDR_WIDTH-1:32]};
+		6'h18: r_nvme_reg_rdata = {r_io_cq1_bs_addr[31:2], 2'b0};
+		6'h19: r_nvme_reg_rdata = {r_io_cq1_size, 3'b0, r_io_cq_irq_en[1], r_io_cq1_iv, r_cq_valid[1], r_io_cq1_bs_addr[C_PCIE_ADDR_WIDTH-1:32]};
+		6'h1A: r_nvme_reg_rdata = {r_io_cq2_bs_addr[31:2], 2'b0};
+		6'h1B: r_nvme_reg_rdata = {r_io_cq2_size, 3'b0, r_io_cq_irq_en[2], r_io_cq2_iv, r_cq_valid[2], r_io_cq2_bs_addr[C_PCIE_ADDR_WIDTH-1:32]};
+		6'h1C: r_nvme_reg_rdata = {r_io_cq3_bs_addr[31:2], 2'b0};
+		6'h1D: r_nvme_reg_rdata = {r_io_cq3_size, 3'b0, r_io_cq_irq_en[3], r_io_cq3_iv, r_cq_valid[3], r_io_cq3_bs_addr[C_PCIE_ADDR_WIDTH-1:32]};
+		6'h1E: r_nvme_reg_rdata = {r_io_cq4_bs_addr[31:2], 2'b0};
+		6'h1F: r_nvme_reg_rdata = {r_io_cq4_size, 3'b0, r_io_cq_irq_en[4], r_io_cq4_iv, r_cq_valid[4], r_io_cq4_bs_addr[C_PCIE_ADDR_WIDTH-1:32]};
+		6'h20: r_nvme_reg_rdata = {r_io_cq5_bs_addr[31:2], 2'b0};
+		6'h21: r_nvme_reg_rdata = {r_io_cq5_size, 3'b0, r_io_cq_irq_en[5], r_io_cq5_iv, r_cq_valid[5], r_io_cq5_bs_addr[C_PCIE_ADDR_WIDTH-1:32]};
+		6'h22: r_nvme_reg_rdata = {r_io_cq6_bs_addr[31:2], 2'b0};
+		6'h23: r_nvme_reg_rdata = {r_io_cq6_size, 3'b0, r_io_cq_irq_en[6], r_io_cq6_iv, r_cq_valid[6], r_io_cq6_bs_addr[C_PCIE_ADDR_WIDTH-1:32]};
+		6'h24: r_nvme_reg_rdata = {r_io_cq7_bs_addr[31:2], 2'b0};
+		6'h25: r_nvme_reg_rdata = {r_io_cq7_size, 3'b0, r_io_cq_irq_en[7], r_io_cq7_iv, r_cq_valid[7], r_io_cq7_bs_addr[C_PCIE_ADDR_WIDTH-1:32]};
+		6'h26: r_nvme_reg_rdata = {r_io_cq8_bs_addr[31:2], 2'b0};
+		6'h27: r_nvme_reg_rdata = {r_io_cq8_size, 3'b0, r_io_cq_irq_en[8], r_io_cq8_iv, r_cq_valid[8], r_io_cq8_bs_addr[C_PCIE_ADDR_WIDTH-1:32]};
 	endcase
 end
 
 always @ (*)
 begin
+	r_nvme_fifo_rdata = 32'h0;
 	case(r_s_axi_araddr[7:2]) // synthesis parallel_case full_case
-		6'h00: r_nvme_fifo_rdata <= 0;
-		6'h01: r_nvme_fifo_rdata <= {12'b0, r_cpl_sq_qid, r_cpl_cid};
-		6'h02: r_nvme_fifo_rdata <= r_cpl_specific;
-		6'h03: r_nvme_fifo_rdata <= {r_cpl_status, 1'b0, r_cql_type, {(14-P_SLOT_TAG_WIDTH){1'b0}}, r_hcmd_slot_tag};
-		6'h04: r_nvme_fifo_rdata <= {r_dma_cmd_dev_addr[31:2], 2'b0};
-		6'h05: r_nvme_fifo_rdata <= {16'b0, r_dma_cmd_pcie_addr[C_PCIE_ADDR_WIDTH-1:32]}; //modified
-		6'h06: r_nvme_fifo_rdata <= {r_dma_cmd_pcie_addr[31:2], 2'b0};
-		6'h07: r_nvme_fifo_rdata <= {r_dma_cmd_type, r_dma_cmd_dir, 7'b0, r_dma_cmd_4k_offset, r_dma_cmd_auto_cpl, r_dma_cmd_dev_len, 2'b0};
-		6'h08: r_nvme_fifo_rdata <= {{(32-P_SLOT_TAG_WIDTH){1'b0}}, r_dma_cmd_hcmd_slot_tag}; //slot_modified
-		6'h09: r_nvme_fifo_rdata <= {{(64-C_M_AXI_ADDR_WIDTH){1'b0}}, r_dma_cmd_dev_addr[C_M_AXI_ADDR_WIDTH-1:32]};
+		6'h00: r_nvme_fifo_rdata = 0;
+		6'h01: r_nvme_fifo_rdata = {12'b0, r_cpl_sq_qid, r_cpl_cid};
+		6'h02: r_nvme_fifo_rdata = r_cpl_specific;
+		6'h03: r_nvme_fifo_rdata = {r_cpl_status, 1'b0, r_cql_type, {(14-P_SLOT_TAG_WIDTH){1'b0}}, r_hcmd_slot_tag};
+		6'h04: r_nvme_fifo_rdata = {r_dma_cmd_dev_addr[31:2], 2'b0};
+		6'h05: r_nvme_fifo_rdata = {16'b0, r_dma_cmd_pcie_addr[C_PCIE_ADDR_WIDTH-1:32]}; //modified
+		6'h06: r_nvme_fifo_rdata = {r_dma_cmd_pcie_addr[31:2], 2'b0};
+		6'h07: r_nvme_fifo_rdata = {r_dma_cmd_type, r_dma_cmd_dir, 7'b0, r_dma_cmd_4k_offset, r_dma_cmd_auto_cpl, r_dma_cmd_dev_len, 2'b0};
+		6'h08: r_nvme_fifo_rdata = {{(32-P_SLOT_TAG_WIDTH){1'b0}}, r_dma_cmd_hcmd_slot_tag}; //slot_modified
+		6'h09: r_nvme_fifo_rdata = {{(64-C_M_AXI_ADDR_WIDTH){1'b0}}, r_dma_cmd_dev_addr[C_M_AXI_ADDR_WIDTH-1:32]};
 	endcase
 end
 

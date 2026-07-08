@@ -56,7 +56,7 @@
 #include "nvme.h"
 #include "nvme_identify.h"
 
-void controller_identification(unsigned int pBuffer)
+void controller_identification(unsigned long long pBuffer)
 {
 	ADMIN_IDENTIFY_CONTROLLER *identifyCNTL;
 	ADMIN_IDENTIFY_POWER_STATE_DESCRIPTOR *powerStateDesc;
@@ -147,7 +147,7 @@ void controller_identification(unsigned int pBuffer)
 	powerStateDesc->RWL = 0x0;
 }
 
-void namespace_identification(unsigned int pBuffer)
+void namespace_identification(unsigned long long pBuffer)
 {
 	ADMIN_IDENTIFY_NAMESPACE *identifyNS;
 	ADMIN_IDENTIFY_FORMAT_DATA *formatData;

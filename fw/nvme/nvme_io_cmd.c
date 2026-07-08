@@ -61,7 +61,8 @@
 
 void handle_nvme_io_read(unsigned int cmdSlotTag, NVME_IO_COMMAND *nvmeIOCmd)
 {
-	unsigned int requestedNvmeBlock, devAddr, dmaIndex, numOfNvmeBlock;
+	unsigned int requestedNvmeBlock, dmaIndex, numOfNvmeBlock;
+	unsigned long long devAddr;
 
 	IO_READ_COMMAND_DW12 readInfo12;
 	//IO_READ_COMMAND_DW13 readInfo13;
@@ -99,7 +100,8 @@ void handle_nvme_io_read(unsigned int cmdSlotTag, NVME_IO_COMMAND *nvmeIOCmd)
 
 void handle_nvme_io_write(unsigned int cmdSlotTag, NVME_IO_COMMAND *nvmeIOCmd)
 {
-	unsigned int requestedNvmeBlock, devAddr, dmaIndex, numOfNvmeBlock;
+	unsigned int requestedNvmeBlock, dmaIndex, numOfNvmeBlock;
+	unsigned long long devAddr;
 	
 	IO_READ_COMMAND_DW12 writeInfo12;
 	//IO_READ_COMMAND_DW13 writeInfo13;

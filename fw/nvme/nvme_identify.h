@@ -55,9 +55,9 @@
 #define MODEL_NUMBER				"DaisyPlus OpenSSD"
 #define FIRMWARE_REVISION			"TYPE0006"
 
-void controller_identification(unsigned int pBuffer);
+void controller_identification(unsigned long long pBuffer);
 
-void namespace_identification(unsigned int pBuffer);
+void namespace_identification(unsigned long long pBuffer);
 
 
 #endif	//__NVME_IDENTIFY_H_

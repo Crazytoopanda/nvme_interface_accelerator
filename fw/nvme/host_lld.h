@@ -73,6 +73,8 @@
 #define NVME_CMD_FIFO_REG_ADDR				(HOST_IP_ADDR + 0x300)
 #define NVME_CPL_FIFO_REG_ADDR				(HOST_IP_ADDR + 0x304)
 #define HOST_DMA_CMD_FIFO_REG_ADDR			(HOST_IP_ADDR + 0x310)
+#define HOST_DMA_CMD_FIFO_TRIG_ADDR 		(HOST_IP_ADDR + 0x330)
+#define HOST_CPL_FIFO_TRIG_ADDR 		    (HOST_IP_ADDR + 0x340)
 
 #define NVME_CMD_SRAM_ADDR					(HOST_IP_ADDR + 0x10000)
 
@@ -280,7 +282,7 @@ typedef struct _HOST_DMA_FIFO_CNT_REG
 typedef struct _HOST_DMA_CMD_FIFO_REG
 {
 	union {
-		unsigned int dword[5];//slot_modified
+		unsigned int dword[6];//slot_modified
 		struct 
 		{
 			unsigned int devAddr;
@@ -296,6 +298,7 @@ typedef struct _HOST_DMA_CMD_FIFO_REG
 				unsigned int dmaType			:1;
 			};
 			unsigned int cmdSlotTag;//slot_modified
+			unsigned int devAddrH;
 		};
 	};
 } HOST_DMA_CMD_FIFO_REG;
@@ -350,13 +353,13 @@ void set_io_sq(unsigned int ioSqIdx, unsigned int valid, unsigned int cqVector, 
 
 void set_io_cq(unsigned int ioCqIdx, unsigned int valid, unsigned int irqEn, unsigned int irqVector, unsigned int qSzie, unsigned int pcieBaseAddrL, unsigned int pcieBaseAddrH);
 
-void set_direct_tx_dma(unsigned int devAddr, unsigned int pcieAddrH, unsigned int pcieAddrL, unsigned int len);
+void set_direct_tx_dma(unsigned long long devAddr, unsigned int pcieAddrH, unsigned int pcieAddrL, unsigned int len);
 
-void set_direct_rx_dma(unsigned int devAddr, unsigned int pcieAddrH, unsigned int pcieAddrL, unsigned int len);
+void set_direct_rx_dma(unsigned long long devAddr, unsigned int pcieAddrH, unsigned int pcieAddrL, unsigned int len);
 
-void set_auto_tx_dma(unsigned int cmdSlotTag, unsigned int cmd4KBOffset, unsigned int devAddr, unsigned int autoCompletion);
+void set_auto_tx_dma(unsigned int cmdSlotTag, unsigned int cmd4KBOffset, unsigned long long devAddr, unsigned int autoCompletion);
 
-void set_auto_rx_dma(unsigned int cmdSlotTag, unsigned int cmd4KBOffset, unsigned int devAddr, unsigned int autoCompletion);
+void set_auto_rx_dma(unsigned int cmdSlotTag, unsigned int cmd4KBOffset, unsigned long long devAddr, unsigned int autoCompletion);
 
 void set_link_width(unsigned int linkNum);
 
