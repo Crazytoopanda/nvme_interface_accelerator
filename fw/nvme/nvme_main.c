@@ -77,7 +77,7 @@ void nvme_main()
 
 	memset(p_storage, 0xFF, NVME_STORAGE_ERASING);
 
-	xil_printf("[ storage capacity %d MB ]\r\n", STORAGE_CAPACITY_L / ((1024*1024) * BYTES_PER_NVME_BLOCK));
+	xil_printf("[ storage capacity %d MB ]\r\n", (unsigned int)(NVME_STORAGE / (1024ULL * 1024ULL)));
 
 	xil_printf("Turn on the host PC \r\n");
 
