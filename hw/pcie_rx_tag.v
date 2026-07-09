@@ -78,9 +78,8 @@ module pcie_rx_tag # (
 
 );
 
-localparam	LP_PCIE_TAG_PREFIX				= 4'b0001;
-localparam	LP_PCIE_TAG_WITDH				= 4;
-localparam	LP_NUM_OF_PCIE_TAG				= 8;
+localparam	LP_PCIE_TAG_WITDH				= 5;
+localparam	LP_NUM_OF_PCIE_TAG				= 32;
 
 reg		[LP_NUM_OF_PCIE_TAG:0]				r_pcie_tag_rear;
 reg		[LP_NUM_OF_PCIE_TAG:0]				r_pcie_tag_front;
@@ -94,19 +93,22 @@ reg											r_cpld_fifo_wr_en;
 reg											r_cpld_fifo_tag_last;
 
 wire	[LP_NUM_OF_PCIE_TAG-1:0]			w_pcie_tag_hit;
-reg		[LP_NUM_OF_PCIE_TAG-1:0]			r_pcie_tag_hit;
+reg		[LP_NUM_OF_PCIE_TAG-1:0]				r_pcie_tag_hit;
 
-reg		[LP_NUM_OF_PCIE_TAG-1:0]			r_pcie_tag_alloc_mask;
-reg		[LP_NUM_OF_PCIE_TAG-1:0]			r_pcie_tag_update_mask;
-reg		[LP_NUM_OF_PCIE_TAG-1:0]			r_pcie_tag_invalid_mask;
-reg		[LP_NUM_OF_PCIE_TAG-1:0]			r_pcie_tag_free_mask;
+reg		[LP_NUM_OF_PCIE_TAG-1:0]				r_pcie_tag_alloc_mask;
+reg		[LP_NUM_OF_PCIE_TAG-1:0]				r_pcie_tag_update_mask;
+reg		[LP_NUM_OF_PCIE_TAG-1:0]				r_pcie_tag_invalid_mask;
+reg		[LP_NUM_OF_PCIE_TAG-1:0]				r_pcie_tag_free_mask;
 
-reg		[LP_NUM_OF_PCIE_TAG-1:0]			r_pcie_tag_valid;
-reg		[LP_NUM_OF_PCIE_TAG-1:0]			r_pcie_tag_invalid;
+reg		[LP_NUM_OF_PCIE_TAG-1:0]				r_pcie_tag_valid;
+reg		[LP_NUM_OF_PCIE_TAG-1:0]				r_pcie_tag_invalid;
 
 reg		[P_FIFO_DEPTH_WIDTH:0]				r_rear_addr;
 
-reg		[P_FIFO_DEPTH_WIDTH-1:0]			r_fifo_wr_addr;
+reg		[P_FIFO_DEPTH_WIDTH-1:0]				r_fifo_wr_addr;
+
+integer tag_idx;
+genvar tag_hit_idx;
 
 assign pcie_tag_full_n = ~((r_pcie_tag_rear[LP_NUM_OF_PCIE_TAG] ^ r_pcie_tag_front[LP_NUM_OF_PCIE_TAG])
 							& (r_pcie_tag_rear[LP_NUM_OF_PCIE_TAG-1:0] == r_pcie_tag_front[LP_NUM_OF_PCIE_TAG-1:0]));
@@ -117,19 +119,20 @@ assign fifo_wr_data = r_cpld_fifo_wr_data;
 assign rear_full_addr = r_alloc_base_addr;
 assign rear_addr = r_rear_addr;
 
+generate
+	for(tag_hit_idx = 0; tag_hit_idx < LP_NUM_OF_PCIE_TAG; tag_hit_idx = tag_hit_idx + 1) begin : gen_pcie_tag_hit
+		assign w_pcie_tag_hit[tag_hit_idx] = (r_pcie_tag[tag_hit_idx] == cpld_fifo_tag[LP_PCIE_TAG_WITDH-1:0]) & r_pcie_tag_valid[tag_hit_idx];
+	end
+endgenerate
+
 always @ (posedge pcie_user_clk or negedge pcie_user_rst_n)
 begin
 	if(pcie_user_rst_n == 0) begin
 		r_pcie_tag_rear <= 1;
 		r_alloc_base_addr <= 0;
-		r_pcie_tag[0] <= {LP_PCIE_TAG_WITDH{1'b1}};
-		r_pcie_tag[1] <= {LP_PCIE_TAG_WITDH{1'b1}};
-		r_pcie_tag[2] <= {LP_PCIE_TAG_WITDH{1'b1}};
-		r_pcie_tag[3] <= {LP_PCIE_TAG_WITDH{1'b1}};
-		r_pcie_tag[4] <= {LP_PCIE_TAG_WITDH{1'b1}};
-		r_pcie_tag[5] <= {LP_PCIE_TAG_WITDH{1'b1}};
-		r_pcie_tag[6] <= {LP_PCIE_TAG_WITDH{1'b1}};
-		r_pcie_tag[7] <= {LP_PCIE_TAG_WITDH{1'b1}};
+		for(tag_idx = 0; tag_idx < LP_NUM_OF_PCIE_TAG; tag_idx = tag_idx + 1) begin
+			r_pcie_tag[tag_idx] <= {LP_PCIE_TAG_WITDH{1'b1}};
+		end
 	end
 	else begin
 		if(pcie_tag_alloc == 1) begin
@@ -138,23 +141,11 @@ begin
 			if(r_pcie_tag_rear[LP_NUM_OF_PCIE_TAG-1] == 1)
 				r_pcie_tag_rear[LP_NUM_OF_PCIE_TAG] <= ~r_pcie_tag_rear[LP_NUM_OF_PCIE_TAG];
 		end
-		
-		if(r_pcie_tag_alloc_mask[0])
-			r_pcie_tag[0] <= pcie_alloc_tag[LP_PCIE_TAG_WITDH-1:0];
-		if(r_pcie_tag_alloc_mask[1])
-			r_pcie_tag[1] <= pcie_alloc_tag[LP_PCIE_TAG_WITDH-1:0];
-		if(r_pcie_tag_alloc_mask[2])
-			r_pcie_tag[2] <= pcie_alloc_tag[LP_PCIE_TAG_WITDH-1:0];
-		if(r_pcie_tag_alloc_mask[3])
-			r_pcie_tag[3] <= pcie_alloc_tag[LP_PCIE_TAG_WITDH-1:0];
-		if(r_pcie_tag_alloc_mask[4])
-			r_pcie_tag[4] <= pcie_alloc_tag[LP_PCIE_TAG_WITDH-1:0];
-		if(r_pcie_tag_alloc_mask[5])
-			r_pcie_tag[5] <= pcie_alloc_tag[LP_PCIE_TAG_WITDH-1:0];
-		if(r_pcie_tag_alloc_mask[6])
-			r_pcie_tag[6] <= pcie_alloc_tag[LP_PCIE_TAG_WITDH-1:0];
-		if(r_pcie_tag_alloc_mask[7])
-			r_pcie_tag[7] <= pcie_alloc_tag[LP_PCIE_TAG_WITDH-1:0];
+
+		for(tag_idx = 0; tag_idx < LP_NUM_OF_PCIE_TAG; tag_idx = tag_idx + 1) begin
+			if(r_pcie_tag_alloc_mask[tag_idx])
+				r_pcie_tag[tag_idx] <= pcie_alloc_tag[LP_PCIE_TAG_WITDH-1:0];
+		end
 	end
 end
 
@@ -178,57 +169,24 @@ begin
 	r_pcie_tag_free_mask <= r_pcie_tag_valid & r_pcie_tag_invalid & r_pcie_tag_front[LP_NUM_OF_PCIE_TAG-1:0];
 end
 
-always @ (posedge pcie_user_clk)
+always @ (posedge pcie_user_clk or negedge pcie_user_rst_n)
 begin
-	case({r_pcie_tag_update_mask[0], r_pcie_tag_alloc_mask[0]}) // synthesis parallel_case
-		2'b01: r_pcie_tag_addr[0] <= r_alloc_base_addr;
-		2'b10: r_pcie_tag_addr[0] <= r_pcie_tag_addr[0] + 1;
-	endcase
-
-	case({r_pcie_tag_update_mask[1], r_pcie_tag_alloc_mask[1]}) // synthesis parallel_case
-		2'b01: r_pcie_tag_addr[1] <= r_alloc_base_addr;
-		2'b10: r_pcie_tag_addr[1] <= r_pcie_tag_addr[1] + 1;
-	endcase
-
-	case({r_pcie_tag_update_mask[2], r_pcie_tag_alloc_mask[2]}) // synthesis parallel_case
-		2'b01: r_pcie_tag_addr[2] <= r_alloc_base_addr;
-		2'b10: r_pcie_tag_addr[2] <= r_pcie_tag_addr[2] + 1;
-	endcase
-
-	case({r_pcie_tag_update_mask[3], r_pcie_tag_alloc_mask[3]}) // synthesis parallel_case
-		2'b01: r_pcie_tag_addr[3] <= r_alloc_base_addr;
-		2'b10: r_pcie_tag_addr[3] <= r_pcie_tag_addr[3] + 1;
-	endcase
-
-	case({r_pcie_tag_update_mask[4], r_pcie_tag_alloc_mask[4]}) // synthesis parallel_case
-		2'b01: r_pcie_tag_addr[4] <= r_alloc_base_addr;
-		2'b10: r_pcie_tag_addr[4] <= r_pcie_tag_addr[4] + 1;
-	endcase
-
-	case({r_pcie_tag_update_mask[5], r_pcie_tag_alloc_mask[5]}) // synthesis parallel_case
-		2'b01: r_pcie_tag_addr[5] <= r_alloc_base_addr;
-		2'b10: r_pcie_tag_addr[5] <= r_pcie_tag_addr[5] + 1;
-	endcase
-
-	case({r_pcie_tag_update_mask[6], r_pcie_tag_alloc_mask[6]}) // synthesis parallel_case
-		2'b01: r_pcie_tag_addr[6] <= r_alloc_base_addr;
-		2'b10: r_pcie_tag_addr[6] <= r_pcie_tag_addr[6] + 1;
-	endcase
-
-	case({r_pcie_tag_update_mask[7], r_pcie_tag_alloc_mask[7]}) // synthesis parallel_case
-		2'b01: r_pcie_tag_addr[7] <= r_alloc_base_addr;
-		2'b10: r_pcie_tag_addr[7] <= r_pcie_tag_addr[7] + 1;
-	endcase
+	if(pcie_user_rst_n == 0) begin
+		for(tag_idx = 0; tag_idx < LP_NUM_OF_PCIE_TAG; tag_idx = tag_idx + 1) begin
+			r_pcie_tag_addr[tag_idx] <= 0;
+		end
+	end
+	else begin
+		for(tag_idx = 0; tag_idx < LP_NUM_OF_PCIE_TAG; tag_idx = tag_idx + 1) begin
+			case({r_pcie_tag_update_mask[tag_idx], r_pcie_tag_alloc_mask[tag_idx]})
+				2'b01: r_pcie_tag_addr[tag_idx] <= r_alloc_base_addr;
+				2'b10: r_pcie_tag_addr[tag_idx] <= r_pcie_tag_addr[tag_idx] + 1;
+				default: begin
+				end
+			endcase
+		end
+	end
 end
-
-assign w_pcie_tag_hit[0] = (r_pcie_tag[0] == cpld_fifo_tag[LP_PCIE_TAG_WITDH-1:0]) & r_pcie_tag_valid[0];
-assign w_pcie_tag_hit[1] = (r_pcie_tag[1] == cpld_fifo_tag[LP_PCIE_TAG_WITDH-1:0]) & r_pcie_tag_valid[1];
-assign w_pcie_tag_hit[2] = (r_pcie_tag[2] == cpld_fifo_tag[LP_PCIE_TAG_WITDH-1:0]) & r_pcie_tag_valid[2];
-assign w_pcie_tag_hit[3] = (r_pcie_tag[3] == cpld_fifo_tag[LP_PCIE_TAG_WITDH-1:0]) & r_pcie_tag_valid[3];
-assign w_pcie_tag_hit[4] = (r_pcie_tag[4] == cpld_fifo_tag[LP_PCIE_TAG_WITDH-1:0]) & r_pcie_tag_valid[4];
-assign w_pcie_tag_hit[5] = (r_pcie_tag[5] == cpld_fifo_tag[LP_PCIE_TAG_WITDH-1:0]) & r_pcie_tag_valid[5];
-assign w_pcie_tag_hit[6] = (r_pcie_tag[6] == cpld_fifo_tag[LP_PCIE_TAG_WITDH-1:0]) & r_pcie_tag_valid[6];
-assign w_pcie_tag_hit[7] = (r_pcie_tag[7] == cpld_fifo_tag[LP_PCIE_TAG_WITDH-1:0]) & r_pcie_tag_valid[7];
 
 always @ (posedge pcie_user_clk)
 begin
@@ -240,19 +198,12 @@ end
 always @ (posedge pcie_user_clk)
 begin
 	r_pcie_tag_hit <= w_pcie_tag_hit;
-	
-	case(w_pcie_tag_hit) // synthesis parallel_case
-		8'b00000001: r_fifo_wr_addr <= r_pcie_tag_addr[0][P_FIFO_DEPTH_WIDTH-1:0];
-		8'b00000010: r_fifo_wr_addr <= r_pcie_tag_addr[1][P_FIFO_DEPTH_WIDTH-1:0];
-		8'b00000100: r_fifo_wr_addr <= r_pcie_tag_addr[2][P_FIFO_DEPTH_WIDTH-1:0];
-		8'b00001000: r_fifo_wr_addr <= r_pcie_tag_addr[3][P_FIFO_DEPTH_WIDTH-1:0];
-		8'b00010000: r_fifo_wr_addr <= r_pcie_tag_addr[4][P_FIFO_DEPTH_WIDTH-1:0];
-		8'b00100000: r_fifo_wr_addr <= r_pcie_tag_addr[5][P_FIFO_DEPTH_WIDTH-1:0];
-		8'b01000000: r_fifo_wr_addr <= r_pcie_tag_addr[6][P_FIFO_DEPTH_WIDTH-1:0];
-		8'b10000000: r_fifo_wr_addr <= r_pcie_tag_addr[7][P_FIFO_DEPTH_WIDTH-1:0];
-	endcase
-end
 
+	for(tag_idx = 0; tag_idx < LP_NUM_OF_PCIE_TAG; tag_idx = tag_idx + 1) begin
+		if(w_pcie_tag_hit[tag_idx])
+			r_fifo_wr_addr <= r_pcie_tag_addr[tag_idx][P_FIFO_DEPTH_WIDTH-1:0];
+	end
+end
 
 always @ (posedge pcie_user_clk or negedge pcie_user_rst_n)
 begin
@@ -271,17 +222,11 @@ begin
 			if(r_pcie_tag_front[LP_NUM_OF_PCIE_TAG-1] == 1)
 				r_pcie_tag_front[LP_NUM_OF_PCIE_TAG] <= ~r_pcie_tag_front[LP_NUM_OF_PCIE_TAG];
 		end
-		
-		case(r_pcie_tag_free_mask) // synthesis parallel_case
-			8'b00000001: r_rear_addr <= r_pcie_tag_addr[0];
-			8'b00000010: r_rear_addr <= r_pcie_tag_addr[1];
-			8'b00000100: r_rear_addr <= r_pcie_tag_addr[2];
-			8'b00001000: r_rear_addr <= r_pcie_tag_addr[3];
-			8'b00010000: r_rear_addr <= r_pcie_tag_addr[4];
-			8'b00100000: r_rear_addr <= r_pcie_tag_addr[5];
-			8'b01000000: r_rear_addr <= r_pcie_tag_addr[6];
-			8'b10000000: r_rear_addr <= r_pcie_tag_addr[7];
-		endcase	
+
+		for(tag_idx = 0; tag_idx < LP_NUM_OF_PCIE_TAG; tag_idx = tag_idx + 1) begin
+			if(r_pcie_tag_free_mask[tag_idx])
+				r_rear_addr <= r_pcie_tag_addr[tag_idx];
+		end
 	end
 end
 

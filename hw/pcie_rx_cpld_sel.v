@@ -95,7 +95,7 @@ wire	[2:0]								w_cpld_prefix_tag_hit;
 
 assign w_cpld_prefix_tag_hit[0] = (cpld_fifo_tag[7:3] == 5'b00000);
 assign w_cpld_prefix_tag_hit[1] = (cpld_fifo_tag[7:3] == 5'b00001);
-assign w_cpld_prefix_tag_hit[2] = (cpld_fifo_tag[7:4] == 4'b0001);
+assign w_cpld_prefix_tag_hit[2] = (cpld_fifo_tag[7:5] == 3'b001);
 
 assign cpld0_fifo_tag = r_cpld_fifo_tag;
 assign cpld0_fifo_tag_last = r_cpld0_fifo_tag_last;

@@ -97,11 +97,13 @@ wire	[10:6]								w_pcie_tag_alloc_len;
 wire										w_pcie_tag_full_n;
 wire										w_pcie_rx_fifo_full_n;
 
+localparam integer LP_DMA_RX_FIFO_DEPTH_WIDTH = 10;
+
 wire										w_fifo_wr_en;
-wire	[8:0]								w_fifo_wr_addr;
+wire	[LP_DMA_RX_FIFO_DEPTH_WIDTH-1:0]		w_fifo_wr_addr;
 wire	[P_PCIE_DATA_WIDTH - 1:0]	        w_fifo_wr_data;
-wire	[9:0]								w_rear_full_addr;
-wire	[9:0]								w_rear_addr;
+wire	[LP_DMA_RX_FIFO_DEPTH_WIDTH:0]		w_rear_full_addr;
+wire	[LP_DMA_RX_FIFO_DEPTH_WIDTH:0]		w_rear_addr;
 
 
 pcie_rx_cmd_fifo 
@@ -121,7 +123,8 @@ pcie_rx_cmd_fifo_inst0
 
 pcie_rx_fifo #(
 	.P_FIFO_WR_DATA_WIDTH					(P_PCIE_DATA_WIDTH),
-	.P_FIFO_RD_DATA_WIDTH					(C_M_AXI_DATA_WIDTH)
+	.P_FIFO_RD_DATA_WIDTH					(C_M_AXI_DATA_WIDTH),
+	.P_FIFO_DEPTH_WIDTH					(LP_DMA_RX_FIFO_DEPTH_WIDTH)
 )
 pcie_rx_fifo_inst0
 (
@@ -147,7 +150,9 @@ pcie_rx_fifo_inst0
 );
 
 
-pcie_rx_tag
+pcie_rx_tag #(
+	.P_FIFO_DEPTH_WIDTH					(LP_DMA_RX_FIFO_DEPTH_WIDTH)
+)
 pcie_rx_tag_inst0
 (
 	.pcie_user_clk							(pcie_user_clk),

@@ -76,8 +76,8 @@ module pcie_rx_req # (
 	input									tx_dma_mrd_req_ack
 );
 
-localparam	LP_PCIE_TAG_PREFIX				= 4'b0001;
-localparam	LP_PCIE_MRD_DELAY				= 8;
+localparam	LP_PCIE_TAG_PREFIX				= 3'b001;
+localparam	LP_PCIE_MRD_DELAY				= 0;
 
 localparam	S_IDLE							= 9'b000000001;
 localparam	S_PCIE_RX_CMD_0					= 9'b000000010;
@@ -100,7 +100,7 @@ reg											r_pcie_rx_cmd_rd_en;
 reg		[12:2]								r_pcie_rx_len;
 reg		[10:2]								r_pcie_rx_cur_len;
 reg		[C_PCIE_ADDR_WIDTH-1:2]				r_pcie_addr;
-reg		[3:0]								r_pcie_rx_tag;
+reg		[4:0]								r_pcie_rx_tag;
 reg											r_pcie_rx_tag_update;
 reg		[5:0]								r_pcie_mrd_delay;
 
@@ -159,7 +159,10 @@ begin
 				next_state <= S_PCIE_MRD_ACK;
 		end
 		S_PCIE_MRD_DONE: begin
-			next_state <= S_PCIE_MRD_DELAY;
+			if(LP_PCIE_MRD_DELAY == 0)
+				next_state <= S_PCIE_MRD_NEXT;
+			else
+				next_state <= S_PCIE_MRD_DELAY;
 		end
 		S_PCIE_MRD_DELAY: begin
 			if(r_pcie_mrd_delay == 0)
@@ -215,7 +218,7 @@ begin
 		end
 		S_PCIE_RX_CMD_1: begin
 			case(r_pcie_max_read_req_size)
-				3'b011: begin
+				3'b011, 3'b100, 3'b101: begin
 					if(r_2nd_dma == 1) begin
 						if(r_pcie_rx_len[5:2] != 0)
 							r_pcie_rx_cur_len[10:2] <= {5'b0, r_pcie_rx_len[5:2]};
@@ -312,7 +315,7 @@ begin
 		S_PCIE_MRD_NEXT: begin
 
 			case(r_pcie_max_read_req_size)
-				3'b011: begin
+				3'b011, 3'b100, 3'b101: begin
 					if(r_2nd_dma == 1) begin
 						if(r_pcie_rx_len[12:2] >= 9'h100)
 							r_pcie_rx_cur_len[10:2] <= 9'h100;
