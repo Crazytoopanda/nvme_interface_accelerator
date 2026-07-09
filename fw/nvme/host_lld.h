@@ -333,6 +333,8 @@ void dev_irq_init();
 
 void dev_irq_handler();
 
+void reset_host_dma_credit();
+
 unsigned int check_nvme_cc_en();
 
 void set_nvme_csts_rdy();

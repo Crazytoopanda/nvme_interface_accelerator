@@ -56,6 +56,8 @@
 //   - First draft
 //////////////////////////////////////////////////////////////////////////////////
 
+#include <string.h>
+
 #include "xil_printf.h"
 #include "debug.h"
 #include "io_access.h"
@@ -132,6 +134,7 @@ void nvme_main()
 
 				set_nvme_admin_queue(0, 0, 0);
 				g_nvmeTask.cacheEn = 0;
+				reset_host_dma_credit();
 				set_nvme_csts_shst(2);
 				g_nvmeTask.status = NVME_TASK_WAIT_RESET;
 
@@ -147,6 +150,7 @@ void nvme_main()
                 unsigned int qID;
 
 				g_nvmeTask.cacheEn = 0;
+				reset_host_dma_credit();
 				set_nvme_csts_shst(0);
 				set_nvme_csts_rdy(0);
 
@@ -180,6 +184,7 @@ void nvme_main()
 				rstCnt++;
 
 			g_nvmeTask.cacheEn = 0;
+			reset_host_dma_credit();
 			set_nvme_admin_queue(0, 0, 0);
 			set_nvme_csts_shst(0);
 			set_nvme_csts_rdy(0);

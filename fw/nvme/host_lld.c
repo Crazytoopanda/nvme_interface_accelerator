@@ -63,9 +63,51 @@ extern NVME_CONTEXT g_nvmeTask;
 HOST_DMA_STATUS g_hostDmaStatus;
 HOST_DMA_ASSIST_STATUS g_hostDmaAssistStatus;
 
+static unsigned int g_autoDmaTxCredit;
+static unsigned int g_autoDmaRxCredit;
+
+static unsigned int get_dma_fifo_credit(unsigned char head, unsigned char tail)
+{
+	return (unsigned int)((head - tail - 1) & 0xFF);
+}
+
+static void refresh_auto_tx_dma_credit(void)
+{
+	g_hostDmaStatus.fifoHead.dword = IO_READ32(HOST_DMA_FIFO_CNT_REG_ADDR);
+	g_autoDmaTxCredit = get_dma_fifo_credit(g_hostDmaStatus.fifoHead.autoDmaTx,
+										  g_hostDmaStatus.fifoTail.autoDmaTx);
+}
+
+static void refresh_auto_rx_dma_credit(void)
+{
+	g_hostDmaStatus.fifoHead.dword = IO_READ32(HOST_DMA_FIFO_CNT_REG_ADDR);
+	g_autoDmaRxCredit = get_dma_fifo_credit(g_hostDmaStatus.fifoHead.autoDmaRx,
+										  g_hostDmaStatus.fifoTail.autoDmaRx);
+}
+
+static void wait_auto_tx_dma_credit(void)
+{
+	while(g_autoDmaTxCredit == 0)
+		refresh_auto_tx_dma_credit();
+}
+
+static void wait_auto_rx_dma_credit(void)
+{
+	while(g_autoDmaRxCredit == 0)
+		refresh_auto_rx_dma_credit();
+}
+
+void reset_host_dma_credit(void)
+{
+	g_autoDmaTxCredit = 0;
+	g_autoDmaRxCredit = 0;
+}
+
 void dev_irq_init()
 {
 	DEV_IRQ_REG devReg;
+
+	reset_host_dma_credit();
 
 	devReg.dword = 0;
 	devReg.pcieLink = 1;
@@ -422,9 +464,7 @@ void set_auto_tx_dma(unsigned int cmdSlotTag, unsigned int cmd4KBOffset, unsigne
 
 	ASSERT(cmd4KBOffset < 256);
 
-	g_hostDmaStatus.fifoHead.dword = IO_READ32(HOST_DMA_FIFO_CNT_REG_ADDR);
-	while((g_hostDmaStatus.fifoTail.autoDmaTx + 1) % 256 == g_hostDmaStatus.fifoHead.autoDmaTx)
-		g_hostDmaStatus.fifoHead.dword = IO_READ32(HOST_DMA_FIFO_CNT_REG_ADDR);
+	wait_auto_tx_dma_credit();
 
 	hostDmaReg.devAddr = (unsigned int)(devAddr & 0xFFFFFFFFULL);
 	hostDmaReg.devAddrH = (unsigned int)((devAddr >> 32)
@@ -453,6 +493,8 @@ void set_auto_tx_dma(unsigned int cmdSlotTag, unsigned int cmd4KBOffset, unsigne
 	if(tempTail > g_hostDmaStatus.fifoTail.autoDmaTx)
 		g_hostDmaAssistStatus.autoDmaTxOverFlowCnt++;
 
+	g_autoDmaTxCredit--;
+
 	g_hostDmaStatus.autoDmaTxCnt++;
 }
 
@@ -463,9 +505,7 @@ void set_auto_rx_dma(unsigned int cmdSlotTag, unsigned int cmd4KBOffset, unsigne
 
 	ASSERT(cmd4KBOffset < 256);
 
-	g_hostDmaStatus.fifoHead.dword = IO_READ32(HOST_DMA_FIFO_CNT_REG_ADDR);
-	while((g_hostDmaStatus.fifoTail.autoDmaRx + 1) % 256 == g_hostDmaStatus.fifoHead.autoDmaRx)
-		g_hostDmaStatus.fifoHead.dword = IO_READ32(HOST_DMA_FIFO_CNT_REG_ADDR);
+	wait_auto_rx_dma_credit();
 
 	hostDmaReg.devAddr = (unsigned int)(devAddr & 0xFFFFFFFFULL);
 	hostDmaReg.devAddrH = (unsigned int)((devAddr >> 32)
@@ -493,6 +533,8 @@ void set_auto_rx_dma(unsigned int cmdSlotTag, unsigned int cmd4KBOffset, unsigne
 	tempTail = g_hostDmaStatus.fifoTail.autoDmaRx++;
 	if(tempTail > g_hostDmaStatus.fifoTail.autoDmaRx)
 		g_hostDmaAssistStatus.autoDmaRxOverFlowCnt++;
+
+	g_autoDmaRxCredit--;
 
 	g_hostDmaStatus.autoDmaRxCnt++;
 }
