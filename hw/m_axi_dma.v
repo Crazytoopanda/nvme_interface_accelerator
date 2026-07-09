@@ -53,7 +53,7 @@ http://www.hanyang.ac.kr/
 module m_axi_dma # (
 	parameter 	P_SLOT_TAG_WIDTH			=  10, //slot_modified
 	parameter	C_M_AXI_ADDR_WIDTH			= 64,
-	parameter	C_M_AXI_DATA_WIDTH			= 64,
+	parameter	C_M_AXI_DATA_WIDTH			= 512,
 	parameter	C_M_AXI_ID_WIDTH			= 1,
 	parameter	C_M_AXI_AWUSER_WIDTH		= 1,
 	parameter	C_M_AXI_WUSER_WIDTH			= 1,

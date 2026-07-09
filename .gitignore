@@ -1,5 +1,8 @@
 **/*_temp
 
 **/xsim.dir
+**/xelab.*
+**/*.wdb
+**/xsim*.*
 **/xvlog.*
 **/vivado*

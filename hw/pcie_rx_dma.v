@@ -54,7 +54,7 @@ http://www.hanyang.ac.kr/
 module pcie_rx_dma # (
 	parameter	P_PCIE_DATA_WIDTH			= 512,
 	parameter	C_PCIE_ADDR_WIDTH			= 48, //modified
-	parameter	C_M_AXI_DATA_WIDTH			= 64
+	parameter	C_M_AXI_DATA_WIDTH			= 512
 )
 (
 	input									pcie_user_clk,
@@ -119,7 +119,10 @@ pcie_rx_cmd_fifo_inst0
 	.empty_n								(w_pcie_rx_cmd_empty_n)
 );
 
-pcie_rx_fifo
+pcie_rx_fifo #(
+	.P_FIFO_WR_DATA_WIDTH					(P_PCIE_DATA_WIDTH),
+	.P_FIFO_RD_DATA_WIDTH					(C_M_AXI_DATA_WIDTH)
+)
 pcie_rx_fifo_inst0
 (
 	.wr_clk									(pcie_user_clk),
@@ -134,7 +137,7 @@ pcie_rx_fifo_inst0
 	.full_n									(w_pcie_rx_fifo_full_n),
 
 	.rd_clk									(dma_bus_clk),
-	.rd_rst_n								(pcie_user_rst_n),
+	.rd_rst_n								(dma_bus_rst_n & pcie_user_rst_n),
 
 	.rd_en									(pcie_rx_fifo_rd_en),
 	.rd_data								(pcie_rx_fifo_rd_data),

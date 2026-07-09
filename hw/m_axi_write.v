@@ -55,7 +55,7 @@ http://www.hanyang.ac.kr/
  module m_axi_write # (
 	parameter 	P_SLOT_TAG_WIDTH			=  10, //slot_modified
 	parameter	C_M_AXI_ADDR_WIDTH			= 64,
-	parameter	C_M_AXI_DATA_WIDTH			= 64,
+	parameter	C_M_AXI_DATA_WIDTH			= 512,
 	parameter	C_M_AXI_ID_WIDTH			= 1,
 	parameter	C_M_AXI_AWUSER_WIDTH		= 1,
 	parameter	C_M_AXI_WUSER_WIDTH			= 1,
@@ -117,6 +117,15 @@ http://www.hanyang.ac.kr/
 );
 
 localparam	LP_AW_DELAY						= 7;
+localparam integer LP_AXI_BYTES					= C_M_AXI_DATA_WIDTH/8;
+localparam integer LP_AXI_DWORDS_PER_BEAT	= C_M_AXI_DATA_WIDTH/32;
+localparam integer LP_AXI_ADDR_LSB			= (C_M_AXI_DATA_WIDTH == 512) ? 6 :
+									  (C_M_AXI_DATA_WIDTH == 256) ? 5 :
+									  (C_M_AXI_DATA_WIDTH == 128) ? 4 : 3;
+localparam [2:0] LP_AXI_SIZE				= (C_M_AXI_DATA_WIDTH == 512) ? 3'd6 :
+									  (C_M_AXI_DATA_WIDTH == 256) ? 3'd5 :
+									  (C_M_AXI_DATA_WIDTH == 128) ? 3'd4 : 3'd3;
+localparam [5:0] LP_OUTSTANDING_MAX			= 6'd32;
 
 localparam	S_AW_IDLE						= 11'b00000000001;
 localparam	S_AW_CMD_0						= 11'b00000000010;
@@ -169,7 +178,7 @@ localparam	S_AW_DMA_DONE_WR				= 11'b10000000000;
      reg											r_m_axi_bresp_err_d1;
      reg											r_m_axi_bresp_err_d2;
     
-     reg		[2:0]								r_axi_aw_req_gnt;
+     reg		[5:0]								r_axi_aw_outstanding;
      reg											r_axi_aw_req;
      wire										w_axi_aw_req_gnt;
      reg											r_axi_wr_req;
@@ -193,8 +202,8 @@ assign w_one_padding = 64'hFFFF_FFFF_FFFF_FFFF;
 
 assign m_axi_awid = 0;
 assign m_axi_awaddr = {r_dev_addr, 2'b0};
-assign m_axi_awlen = r_m_axi_awlen[10:3];
-assign m_axi_awsize = `D_AXSIZE_008_BYTES;
+assign m_axi_awlen = r_m_axi_awlen[10:LP_AXI_ADDR_LSB];
+assign m_axi_awsize = LP_AXI_SIZE;
 assign m_axi_awburst = `D_AXBURST_INCR;
 assign m_axi_awlock = `D_AXLOCK_NORMAL;
 assign m_axi_awcache = `D_AXCACHE_NON_CACHE;
@@ -359,10 +368,18 @@ begin
 			r_dummy_write <= 0;
 		end
 		S_AW_WAIT_EMPTY_N: begin
-			if(r_dummy_write == 1)
-				r_m_axi_awlen           <= r_wr_count * 2'b10 - 2;
-			else
-				r_m_axi_awlen <= r_dev_cur_len - 2;
+			if(r_dummy_write == 1) begin
+				if((r_wr_count * 2'b10) < LP_AXI_DWORDS_PER_BEAT)
+					r_m_axi_awlen <= 1'b0;
+				else
+					r_m_axi_awlen <= r_wr_count * 2'b10 - LP_AXI_DWORDS_PER_BEAT;
+			end
+			else begin
+				if(r_dev_cur_len < LP_AXI_DWORDS_PER_BEAT)
+					r_m_axi_awlen <= 1'b0;
+				else
+					r_m_axi_awlen <= r_dev_cur_len - LP_AXI_DWORDS_PER_BEAT;
+			end
 		end
 		S_AW_REQ: begin
 			if(r_dummy_write == 1)
@@ -536,7 +553,7 @@ begin
 	endcase
 end
 
-assign w_axi_aw_req_gnt = r_axi_aw_req_gnt[2];
+assign w_axi_aw_req_gnt = (r_axi_aw_outstanding < LP_OUTSTANDING_MAX);
 
 //assign w_m_axi_bvalid = r_m_axi_bvalid & ~r_m_axi_bvalid_d1;
 
@@ -562,18 +579,13 @@ end
 always @ (posedge m_axi_aclk or negedge m_axi_aresetn)
 begin
 	if(m_axi_aresetn == 0) begin
-		r_axi_aw_req_gnt <= 3'b110;
+		r_axi_aw_outstanding <= 0;
 	end
 	else begin
-		case({r_m_axi_bvalid, r_axi_aw_req})
-			2'b01: begin
-				r_axi_aw_req_gnt <= {r_axi_aw_req_gnt[1:0], r_axi_aw_req_gnt[2]};
-			end
-			2'b10: begin
-				r_axi_aw_req_gnt <= {r_axi_aw_req_gnt[0], r_axi_aw_req_gnt[2:1]};
-			end
+		case({(m_axi_bvalid == 1'b1), (m_axi_awvalid == 1'b1 && m_axi_awready == 1'b1)})
+			2'b01: r_axi_aw_outstanding <= r_axi_aw_outstanding + 1'b1;
+			2'b10: r_axi_aw_outstanding <= r_axi_aw_outstanding - 1'b1;
 			default: begin
-
 			end
 		endcase
 	end
@@ -602,7 +614,7 @@ begin
 		end
 		S_W_DATA: begin
 			if(m_axi_wready == 1) begin
-				if(r_wr_data_cnt == 2)
+				if(r_wr_data_cnt == LP_AXI_DWORDS_PER_BEAT)
 					next_w_state <= S_W_DATA_LAST;
 				else
 					next_w_state <= S_W_DATA;
@@ -640,7 +652,7 @@ begin
 			r_pcie_rx_fifo_rd_data <= pcie_rx_fifo_rd_data;
 		end
 		S_W_DATA: begin
-			r_wr_data_cnt <= r_wr_data_cnt - 2;
+			r_wr_data_cnt <= r_wr_data_cnt - LP_AXI_DWORDS_PER_BEAT;
 			r_pcie_rx_fifo_rd_data <= pcie_rx_fifo_rd_data;
 			r_pcie_rx_fifo_rd_data_d1 <= r_pcie_rx_fifo_rd_data;
 		end

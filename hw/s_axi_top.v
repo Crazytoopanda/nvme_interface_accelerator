@@ -58,7 +58,7 @@ module s_axi_top # (
 	parameter	C_S0_AXI_HIGHADDR			= 32'hA001FFFF,
 
 	parameter	C_M0_AXI_ADDR_WIDTH			= 64,
-	parameter	C_M0_AXI_DATA_WIDTH			= 64,
+	parameter	C_M0_AXI_DATA_WIDTH			= 512,
 	parameter	C_M0_AXI_ID_WIDTH			= 1,
 	parameter	C_M0_AXI_AWUSER_WIDTH		= 1,
 	parameter	C_M0_AXI_WUSER_WIDTH		= 1,

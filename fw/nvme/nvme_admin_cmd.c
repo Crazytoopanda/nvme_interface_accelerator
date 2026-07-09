@@ -426,34 +426,81 @@ void handle_identify(NVME_ADMIN_COMMAND *nvmeAdminCmd, NVME_COMPLETION *nvmeCPL)
 
 void handle_get_log_page(NVME_ADMIN_COMMAND *nvmeAdminCmd, NVME_COMPLETION *nvmeCPL)
 {
-	/*ADMIN_GET_LOG_PAGE_DW10 getLogPageInfo;
-
-	unsigned int prp1[2];
-	unsigned int prp2[2];
-	unsigned int prpLen;
+	ADMIN_GET_LOG_PAGE_DW10 getLogPageInfo;
+	unsigned long long logBase = NVME_MANAGEMENT_START_ADDR;
+	volatile unsigned char *logData = (volatile unsigned char *)logBase;
+	unsigned int transferLen;
+	unsigned int firstPrpLen;
+	unsigned int idx;
 
 	getLogPageInfo.dword = nvmeAdminCmd->dword10;
-
-	prp1[0] = nvmeAdminCmd->PRP1[0];
-	prp1[1] = nvmeAdminCmd->PRP1[1];
-	prpLen = 0x1000 - (prp1[0] & 0xFFF);
-
-	prp2[0] = nvmeAdminCmd->PRP2[0];
-	prp2[1] = nvmeAdminCmd->PRP2[1];
-
-	xil_printf("ADMIN GET LOG PAGE\n");
-
-	//LID
-	//Mandatory//1-Error information, 2-SMART/Health information, 3-Firmware Slot information
-	//Optional//4-ChangedNamespaceList, 5-Command Effects Log
-	xil_printf("LID: 0x%X, NUMD: 0x%X \r\n", getLogPageInfo.LID, getLogPageInfo.NUMD);
-
-	xil_printf("PRP1[63:32] = 0x%X, PRP1[31:0] = 0x%X", prp1[1], prp1[0]);
-	xil_printf("PRP2[63:32] = 0x%X, PRP2[31:0] = 0x%X", prp2[1], prp2[0]);*/
+	transferLen = ((unsigned int)getLogPageInfo.NUMD + 1) * 4;
 
 	nvmeCPL->dword[0] = 0;
-    nvmeCPL->statusField.SCT = 1;
-	nvmeCPL->specific = 0x9;//invalid log page
+	nvmeCPL->specific = 0;
+
+	if(transferLen == 0 || transferLen > 0x1000)
+	{
+		nvmeCPL->statusField.SCT = 0;
+		nvmeCPL->statusField.SC = SC_INVALID_FIELD_IN_COMMAND;
+		nvmeCPL->statusField.DNR = 1;
+		return;
+	}
+
+	ASSERT((nvmeAdminCmd->PRP1[0] & 0x3) == 0 && (nvmeAdminCmd->PRP2[0] & 0x3) == 0);
+	ASSERT(nvmeAdminCmd->PRP1[1] < 0x10000 && nvmeAdminCmd->PRP2[1] < 0x10000);
+
+	for(idx = 0; idx < 0x1000; idx++)
+		logData[idx] = 0;
+
+	switch(getLogPageInfo.LID)
+	{
+		case 0x01:
+		{
+			break;
+		}
+		case 0x02:
+		{
+			logData[0] = 0x00;
+			logData[1] = 0x2C;
+			logData[2] = 0x01;
+			logData[3] = 100;
+			logData[4] = 10;
+			logData[5] = 0;
+			break;
+		}
+		case 0x03:
+		{
+			logData[0] = 0x01;
+			break;
+		}
+		default:
+		{
+			nvmeCPL->statusField.SCT = 1;
+			nvmeCPL->statusField.SC = SC_INVALID_LOG_PAGE;
+			nvmeCPL->statusField.DNR = 1;
+			return;
+		}
+	}
+
+	Xil_DCacheFlushRange((UINTPTR)logBase, 0x1000);
+
+	firstPrpLen = 0x1000 - (nvmeAdminCmd->PRP1[0] & 0xFFF);
+	if(firstPrpLen > transferLen)
+		firstPrpLen = transferLen;
+
+	set_direct_tx_dma(logBase, nvmeAdminCmd->PRP1[1], nvmeAdminCmd->PRP1[0], firstPrpLen);
+	if(firstPrpLen < transferLen)
+	{
+		set_direct_tx_dma(logBase + firstPrpLen,
+				nvmeAdminCmd->PRP2[1],
+				nvmeAdminCmd->PRP2[0],
+				transferLen - firstPrpLen);
+	}
+
+	check_direct_tx_dma_done();
+	nvmeCPL->statusFieldWord = 0;
+	nvmeCPL->specific = 0;
 }
 
 void handle_nvme_admin_cmd(NVME_COMMAND *nvmeCmd)

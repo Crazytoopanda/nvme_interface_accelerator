@@ -49,7 +49,7 @@ http://www.hanyang.ac.kr/
 
 `timescale 1ns / 1ps
 
-module pcie_rx_fifo # (
+module pcie_rx_fifo_new # (
 	parameter	P_FIFO_WR_DATA_WIDTH		= 512,
 	parameter	P_FIFO_RD_DATA_WIDTH		= 512,
 	parameter	P_FIFO_DEPTH_WIDTH			= 9

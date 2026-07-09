@@ -55,7 +55,7 @@ http://www.hanyang.ac.kr/
 module m_axi_read # (
 	parameter 	P_SLOT_TAG_WIDTH			=  10, //slot_modified
 	parameter	C_M_AXI_ADDR_WIDTH			= 64,
-	parameter	C_M_AXI_DATA_WIDTH			= 64,
+	parameter	C_M_AXI_DATA_WIDTH			= 512,
 	parameter	C_M_AXI_ID_WIDTH			= 1,
 	parameter	C_M_AXI_ARUSER_WIDTH		= 1,
 	parameter	C_M_AXI_RUSER_WIDTH			= 1  
@@ -104,6 +104,15 @@ module m_axi_read # (
 );
 
 localparam	LP_AR_DELAY						= 7;
+localparam integer LP_AXI_BYTES					= C_M_AXI_DATA_WIDTH/8;
+localparam integer LP_AXI_DWORDS_PER_BEAT	= C_M_AXI_DATA_WIDTH/32;
+localparam integer LP_AXI_ADDR_LSB			= (C_M_AXI_DATA_WIDTH == 512) ? 6 :
+									  (C_M_AXI_DATA_WIDTH == 256) ? 5 :
+									  (C_M_AXI_DATA_WIDTH == 128) ? 4 : 3;
+localparam [2:0] LP_AXI_SIZE				= (C_M_AXI_DATA_WIDTH == 512) ? 3'd6 :
+									  (C_M_AXI_DATA_WIDTH == 256) ? 3'd5 :
+									  (C_M_AXI_DATA_WIDTH == 128) ? 3'd4 : 3'd3;
+localparam [5:0] LP_OUTSTANDING_MAX			= 6'd32;
 
 localparam	S_IDLE							= 9'b000000001;
 localparam	S_CMD_0							= 9'b000000010;
@@ -129,7 +138,7 @@ localparam	S_DUMMY_RD						= 9'b100000000;
      reg											r_pcie_tx_fifo_alloc_en;
     
      wire										w_axi_ar_req_gnt;
-     reg		[2:0]								r_axi_ar_req_gnt;
+     reg		[5:0]								r_axi_ar_outstanding;
      reg											r_axi_ar_req;
     
      reg											r_m_axi_arvalid;
@@ -150,8 +159,8 @@ localparam	S_DUMMY_RD						= 9'b100000000;
 
 assign m_axi_arid = 0;
 assign m_axi_araddr = {r_dev_addr, 2'b0};
-assign m_axi_arlen = r_m_axi_arlen[10:3];
-assign m_axi_arsize = `D_AXSIZE_008_BYTES;
+assign m_axi_arlen = r_m_axi_arlen[10:LP_AXI_ADDR_LSB];
+assign m_axi_arsize = LP_AXI_SIZE;
 assign m_axi_arburst = `D_AXBURST_INCR;
 assign m_axi_arlock = `D_AXLOCK_NORMAL;
 assign m_axi_arcache = `D_AXCACHE_NON_CACHE;
@@ -273,10 +282,10 @@ begin
 			r_dummy_read <= 0;
         end
 		S_WAIT_FULL_N: begin
-		    if (r_dev_cur_len < 2)
+		    if (r_dev_cur_len < LP_AXI_DWORDS_PER_BEAT)
 	            r_m_axi_arlen <= 1'b0;
 	        else
-		        r_m_axi_arlen <= r_dev_cur_len - 2;
+		        r_m_axi_arlen <= r_dev_cur_len - LP_AXI_DWORDS_PER_BEAT;
 		end
 		S_AR_REQ: begin
 	      r_dev_dma_len <= r_dev_dma_len - r_dev_cur_len;
@@ -416,23 +425,18 @@ begin
 		r_m_axi_rresp_err <= 0;
 end
 
-assign w_axi_ar_req_gnt = r_axi_ar_req_gnt[2];
+assign w_axi_ar_req_gnt = (r_axi_ar_outstanding < LP_OUTSTANDING_MAX);
 
 always @ (posedge m_axi_aclk or negedge m_axi_aresetn)
 begin
 	if(m_axi_aresetn == 0) begin
-		r_axi_ar_req_gnt <= 3'b110;
+		r_axi_ar_outstanding <= 0;
 	end
 	else begin
-		case({r_m_axi_rlast, r_axi_ar_req})
-			2'b01: begin
-				r_axi_ar_req_gnt <= {r_axi_ar_req_gnt[1:0], r_axi_ar_req_gnt[2]};
-			end
-			2'b10: begin
-				r_axi_ar_req_gnt <= {r_axi_ar_req_gnt[0], r_axi_ar_req_gnt[2:1]};
-			end
+		case({(m_axi_rvalid == 1'b1 && m_axi_rlast == 1'b1), (m_axi_arvalid == 1'b1 && m_axi_arready == 1'b1)})
+			2'b01: r_axi_ar_outstanding <= r_axi_ar_outstanding + 1'b1;
+			2'b10: r_axi_ar_outstanding <= r_axi_ar_outstanding - 1'b1;
 			default: begin
-
 			end
 		endcase
 	end
