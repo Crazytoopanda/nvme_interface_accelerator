@@ -104,6 +104,7 @@ int main()
 	}
 
 	Xil_SetTlbAttributes(NVME_CMD_SQE_WINDOW_ADDR, NORM_WB_CACHE);
+	Xil_SetTlbAttributes(HOST_DMA_PACKED_SUBMIT_ADDR, NORM_NONCACHE);
 
 	 for (u64 addr = DRAM_START_ADDR;
 	 	addr <= DRAM_END_ADDR; addr += 2 * MB)

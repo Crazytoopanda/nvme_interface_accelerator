@@ -83,7 +83,6 @@ static inline void write_packed_auto_dma(unsigned int cmdSlotTag, unsigned int d
 			  ((unsigned __int128)(unsigned int)(devAddr >> 32) << 32) |
 			  (unsigned int)(devAddr & 0xFFFFFFFFULL);
 	*(volatile unsigned __int128 *)(unsigned long)HOST_DMA_PACKED_SUBMIT_ADDR = payload;
-	Xil_DCacheFlushRange((UINTPTR)HOST_DMA_PACKED_SUBMIT_ADDR, 64);
 	__asm__ volatile("dsb sy" ::: "memory");
 }
 

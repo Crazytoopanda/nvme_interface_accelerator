@@ -67,7 +67,7 @@ module axi_sqe_window # (
 localparam LP_WORDS_PER_BEAT = (C_S_AXI_DATA_WIDTH == 128) ? 4 :
 							   (C_S_AXI_DATA_WIDTH == 64)  ? 2 : 1;
 localparam LP_BEAT_BYTES = C_S_AXI_DATA_WIDTH / 8;
-localparam LP_PACKED_DMA_ADDR_BIT = 17;
+localparam LP_PACKED_DMA_ADDR_BIT = 21;
 localparam LP_RD_IDLE = 3'd0;
 localparam LP_RD_SET_ADDR = 3'd1;
 localparam LP_RD_CAPTURE = 3'd2;

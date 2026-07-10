@@ -65,8 +65,8 @@ module user_top # (
 	parameter	C_S1_AXI_ADDR_WIDTH			= 32,
 	parameter	C_S1_AXI_DATA_WIDTH			= 128,
 	parameter	C_S1_AXI_ID_WIDTH			= 1,
-	parameter	C_S1_AXI_BASEADDR			= 32'hA0200000,
-	parameter	C_S1_AXI_HIGHADDR			= 32'hA03FFFFF,
+	parameter	C_S1_AXI_BASEADDR			= 32'hB0000000,
+	parameter	C_S1_AXI_HIGHADDR			= 32'hB03FFFFF,
 
 	parameter	C_M0_AXI_ADDR_WIDTH			= 64,
 	parameter	C_M0_AXI_DATA_WIDTH			= 512,
