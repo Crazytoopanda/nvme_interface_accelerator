@@ -73,6 +73,20 @@ static inline void invalidate_sqe_cache_line(unsigned long long addr)
 	__asm__ volatile("dsb sy" ::: "memory");
 }
 
+static inline void write_packed_auto_dma(unsigned int cmdSlotTag, unsigned int dmaCtrl,
+								 unsigned long long devAddr)
+{
+	unsigned __int128 payload;
+
+	payload = ((unsigned __int128)cmdSlotTag << 96) |
+			  ((unsigned __int128)dmaCtrl << 64) |
+			  ((unsigned __int128)(unsigned int)(devAddr >> 32) << 32) |
+			  (unsigned int)(devAddr & 0xFFFFFFFFULL);
+	*(volatile unsigned __int128 *)(unsigned long)HOST_DMA_PACKED_SUBMIT_ADDR = payload;
+	Xil_DCacheFlushRange((UINTPTR)HOST_DMA_PACKED_SUBMIT_ADDR, 64);
+	__asm__ volatile("dsb sy" ::: "memory");
+}
+
 static unsigned int get_dma_fifo_credit(unsigned char head, unsigned char tail)
 {
 	return (unsigned int)((head - tail - 1) & 0xFF);
@@ -471,28 +485,17 @@ void set_direct_rx_dma(unsigned long long devAddr, unsigned int pcieAddrH, unsig
 
 void set_auto_tx_dma(unsigned int cmdSlotTag, unsigned int cmd4KBOffset, unsigned long long devAddr, unsigned int autoCompletion)
 {
-	unsigned int dmaDword0;
 	unsigned int dmaDword3;
-	unsigned int dmaDword4;
-	unsigned int dmaDword5;
 	unsigned char tempTail;
 
 	ASSERT(cmd4KBOffset < 256);
 
 	wait_auto_tx_dma_credit();
 
-	dmaDword0 = (unsigned int)(devAddr & 0xFFFFFFFFULL);
-	dmaDword5 = (unsigned int)(devAddr >> 32);
 	dmaDword3 = (HOST_DMA_TX_DIRECTION << 30) |
 			((cmd4KBOffset & 0x1FFU) << 14) |
 			((autoCompletion & 0x1U) << 13);
-	dmaDword4 = cmdSlotTag;
-
-	IO_WRITE32(HOST_DMA_CMD_FIFO_REG_ADDR, dmaDword0);
-	IO_WRITE32((HOST_DMA_CMD_FIFO_REG_ADDR + 20), dmaDword5);
-	IO_WRITE32((HOST_DMA_CMD_FIFO_REG_ADDR + 12), dmaDword3);
-	IO_WRITE32((HOST_DMA_CMD_FIFO_REG_ADDR + 16), dmaDword4);
-	IO_WRITE32(HOST_DMA_CMD_FIFO_TRIG_ADDR, 1);  /* trigger */
+	write_packed_auto_dma(cmdSlotTag, dmaDword3, devAddr);
 
 	tempTail = g_hostDmaStatus.fifoTail.autoDmaTx++;
 	if(tempTail > g_hostDmaStatus.fifoTail.autoDmaTx)
@@ -505,28 +508,17 @@ void set_auto_tx_dma(unsigned int cmdSlotTag, unsigned int cmd4KBOffset, unsigne
 
 void set_auto_rx_dma(unsigned int cmdSlotTag, unsigned int cmd4KBOffset, unsigned long long devAddr, unsigned int autoCompletion)
 {
-	unsigned int dmaDword0;
 	unsigned int dmaDword3;
-	unsigned int dmaDword4;
-	unsigned int dmaDword5;
 	unsigned char tempTail;
 
 	ASSERT(cmd4KBOffset < 256);
 
 	wait_auto_rx_dma_credit();
 
-	dmaDword0 = (unsigned int)(devAddr & 0xFFFFFFFFULL);
-	dmaDword5 = (unsigned int)(devAddr >> 32);
 	dmaDword3 = (HOST_DMA_RX_DIRECTION << 30) |
 			((cmd4KBOffset & 0x1FFU) << 14) |
 			((autoCompletion & 0x1U) << 13);
-	dmaDword4 = cmdSlotTag;
-
-	IO_WRITE32(HOST_DMA_CMD_FIFO_REG_ADDR, dmaDword0);
-	IO_WRITE32((HOST_DMA_CMD_FIFO_REG_ADDR + 20), dmaDword5);
-	IO_WRITE32((HOST_DMA_CMD_FIFO_REG_ADDR + 12), dmaDword3);
-	IO_WRITE32((HOST_DMA_CMD_FIFO_REG_ADDR + 16), dmaDword4);
-	IO_WRITE32(HOST_DMA_CMD_FIFO_TRIG_ADDR, 1);  /* trigger */
+	write_packed_auto_dma(cmdSlotTag, dmaDword3, devAddr);
 
 	tempTail = g_hostDmaStatus.fifoTail.autoDmaRx++;
 	if(tempTail > g_hostDmaStatus.fifoTail.autoDmaRx)

@@ -58,6 +58,7 @@ module nvme_pcie # (
 	parameter	C_PCIE_ADDR_WIDTH			= 48, //modified
 	parameter	C_M_AXI_DATA_WIDTH			= 512,
 	parameter	C_M_AXI_ADDR_WIDTH			= 64,
+	parameter	P_SQE_DATA_WIDTH			= 128,
 
 	parameter KEEP_WIDTH                                 = C_PCIE_DATA_WIDTH / 32, 
 	parameter TCQ                                        = 1,
@@ -152,6 +153,7 @@ module nvme_pcie # (
 
 	input	[(P_SLOT_TAG_WIDTH+2)+1:0]		hcmd_table_rd_addr, //slot_modified
 	output	[31:0]							hcmd_table_rd_data,
+	output	[P_SQE_DATA_WIDTH-1:0]			hcmd_table_rd_data_sqe,
 
 	input									hcmd_cq_wr1_en,
 	input	[(P_SLOT_TAG_WIDTH+28)-1:0]		hcmd_cq_wr1_data0, //slot_modified
@@ -491,7 +493,8 @@ pcie_cntl_slave_inst0(
 pcie_hcmd # (
 	.P_SLOT_TAG_WIDTH						(P_SLOT_TAG_WIDTH), //slot_modified
 	.P_SLOT_WIDTH							(P_SLOT_WIDTH), //slot_modified
-	.C_PCIE_DATA_WIDTH						(C_PCIE_DATA_WIDTH)
+	.C_PCIE_DATA_WIDTH						(C_PCIE_DATA_WIDTH),
+	.P_SQE_DATA_WIDTH						(P_SQE_DATA_WIDTH)
 )
 pcie_hcmd_inst0(
 	.pcie_user_clk							(pcie_user_clk),
@@ -614,6 +617,7 @@ pcie_hcmd_inst0(
 
 	.hcmd_table_rd_addr						(hcmd_table_rd_addr),
 	.hcmd_table_rd_data						(hcmd_table_rd_data),
+	.hcmd_table_rd_data_sqe					(hcmd_table_rd_data_sqe),
 
 	.hcmd_cq_wr1_en							(hcmd_cq_wr1_en),
 	.hcmd_cq_wr1_data0						(hcmd_cq_wr1_data0),

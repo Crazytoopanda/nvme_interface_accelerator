@@ -55,7 +55,7 @@
 #define __HOST_LLD_H_
 
 /* need to notice here after updating hardware */
-#define HOST_IP_ADDR						(0xA0000000ULL) 
+#define HOST_IP_ADDR						(0xA0000000ULL)
 
 #define DEV_IRQ_MASK_REG_ADDR				(HOST_IP_ADDR + 0x4)
 #define DEV_IRQ_CLEAR_REG_ADDR				(HOST_IP_ADDR + 0x8)
@@ -74,12 +74,13 @@
 #define NVME_CPL_FIFO_REG_ADDR				(HOST_IP_ADDR + 0x304)
 #define HOST_DMA_CMD_FIFO_REG_ADDR			(HOST_IP_ADDR + 0x310)
 #define HOST_DMA_CMD_FIFO_TRIG_ADDR 		(HOST_IP_ADDR + 0x330)
+#define HOST_DMA_PACKED_SUBMIT_ADDR			(0xB0020000ULL)
 #define HOST_CPL_FIFO_TRIG_ADDR 		    (HOST_IP_ADDR + 0x340)
 
 #define NVME_CMD_SRAM_ADDR					(HOST_IP_ADDR + 0x10000)
 
 /* need to notice here after updating hardware */
-#define NVME_CMD_SQE_WINDOW_ADDR			(0xA0200000ULL)
+#define NVME_CMD_SQE_WINDOW_ADDR			(0xB0000000ULL)
 #define NVME_CMD_SQE_SIZE					(64)
 
 
@@ -190,7 +191,7 @@ typedef struct _NVME_CPL_FIFO_REG
 	union {
 		unsigned int dword[3];
 		struct {
-			struct 
+			struct
 			{
 				unsigned int cid				:16;
 				unsigned int sqId				:4;
@@ -205,7 +206,7 @@ typedef struct _NVME_CPL_FIFO_REG
 
 			union {
 				unsigned short statusFieldWord;
-				struct 
+				struct
 				{
 					unsigned short reserved0	:1;
 					unsigned short SC			:8;//Status Code
@@ -272,7 +273,7 @@ typedef struct _HOST_DMA_FIFO_CNT_REG
 {
 	union {
 		unsigned int dword;
-		struct 
+		struct
 		{
 			unsigned char directDmaRx;
 			unsigned char directDmaTx;
@@ -287,12 +288,12 @@ typedef struct _HOST_DMA_CMD_FIFO_REG
 {
 	union {
 		unsigned int dword[6];//slot_modified
-		struct 
+		struct
 		{
 			unsigned int devAddr;
 			unsigned int pcieAddrH;
-			unsigned int pcieAddrL;			
-			struct 
+			unsigned int pcieAddrL;
+			struct
 			{
 				unsigned int dmaLen				:13;
 				unsigned int autoCompletion		:1;

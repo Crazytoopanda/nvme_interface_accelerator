@@ -560,6 +560,7 @@ wire	[(P_SLOT_TAG_WIDTH+2)+1:0]			w_hcmd_table_rd_addr; //slot_modified
 wire	[(P_SLOT_TAG_WIDTH+2)+1:0]			w_s0_hcmd_table_rd_addr; //slot_modified
 wire	[(P_SLOT_TAG_WIDTH+2)+1:0]			w_s1_hcmd_table_rd_addr; //slot_modified
 wire	[31:0]								w_hcmd_table_rd_data;
+wire	[C_S1_AXI_DATA_WIDTH-1:0]		w_hcmd_table_rd_data_sqe;
 wire										w_s1_hcmd_table_rd_active;
 
 wire										w_hcmd_sq_rd_en;
@@ -575,9 +576,18 @@ wire										w_dma_cmd_wr_en;
 wire	[C_M0_AXI_ADDR_WIDTH+23:0]			w_dma_cmd_wr_data0; //modified
 wire	[C_M0_AXI_ADDR_WIDTH+23:0]			w_dma_cmd_wr_data1; //modified
 wire										w_dma_cmd_wr_rdy_n;
+wire										w_s1_dma_cmd_wr_en;
+wire	[C_M0_AXI_ADDR_WIDTH+23:0]			w_s1_dma_cmd_wr_data0;
+wire	[C_M0_AXI_ADDR_WIDTH+23:0]			w_s1_dma_cmd_wr_data1;
+wire										w_dma_cmd_wr_en_mux;
+wire	[C_M0_AXI_ADDR_WIDTH+23:0]			w_dma_cmd_wr_data0_mux;
+wire	[C_M0_AXI_ADDR_WIDTH+23:0]			w_dma_cmd_wr_data1_mux;
 
 assign w_hcmd_table_rd_addr = w_s1_hcmd_table_rd_active ? w_s1_hcmd_table_rd_addr :
 								 w_s0_hcmd_table_rd_addr;
+assign w_dma_cmd_wr_en_mux = w_s1_dma_cmd_wr_en | w_dma_cmd_wr_en;
+assign w_dma_cmd_wr_data0_mux = (w_s1_dma_cmd_wr_en == 1) ? w_s1_dma_cmd_wr_data0 : w_dma_cmd_wr_data0;
+assign w_dma_cmd_wr_data1_mux = (w_s1_dma_cmd_wr_en == 1) ? w_s1_dma_cmd_wr_data1 : w_dma_cmd_wr_data1;
 
 wire	[7:0]								w_dma_rx_direct_done_cnt;
 wire	[7:0]								w_dma_tx_direct_done_cnt;
@@ -762,7 +772,12 @@ axi_sqe_window_inst0 (
 
 	.hcmd_table_rd_active			(w_s1_hcmd_table_rd_active),
 	.hcmd_table_rd_addr				(w_s1_hcmd_table_rd_addr),
-	.hcmd_table_rd_data				(w_hcmd_table_rd_data)
+	.hcmd_table_rd_data_sqe			(w_hcmd_table_rd_data_sqe),
+
+	.dma_cmd_wr_en					(w_s1_dma_cmd_wr_en),
+	.dma_cmd_wr_data0				(w_s1_dma_cmd_wr_data0),
+	.dma_cmd_wr_data1				(w_s1_dma_cmd_wr_data1),
+	.dma_cmd_wr_rdy_n				(w_dma_cmd_wr_rdy_n)
 );
 
 s_axi_top # (
@@ -1160,7 +1175,8 @@ reg_cpu_pcie_sync_isnt0
 nvme_pcie # (
 	.P_SLOT_TAG_WIDTH						(P_SLOT_TAG_WIDTH), //slot_modified
 	.P_SLOT_WIDTH							(P_SLOT_WIDTH), //slot_modified
-	.C_PCIE_DATA_WIDTH						(C_PCIE_DATA_WIDTH)
+	.C_PCIE_DATA_WIDTH						(C_PCIE_DATA_WIDTH),
+	.P_SQE_DATA_WIDTH						(C_S1_AXI_DATA_WIDTH)
 )
 nvme_pcie_inst0(
 //PCIe user clock
@@ -1245,15 +1261,16 @@ nvme_pcie_inst0(
 
 	.hcmd_table_rd_addr						(w_hcmd_table_rd_addr),
 	.hcmd_table_rd_data						(w_hcmd_table_rd_data),
+	.hcmd_table_rd_data_sqe					(w_hcmd_table_rd_data_sqe),
 
 	.hcmd_cq_wr1_en							(w_hcmd_cq_wr1_en),
 	.hcmd_cq_wr1_data0						(w_hcmd_cq_wr1_data0),
 	.hcmd_cq_wr1_data1						(w_hcmd_cq_wr1_data1),
 	.hcmd_cq_wr1_rdy_n						(w_hcmd_cq_wr1_rdy_n),
 
-	.dma_cmd_wr_en							(w_dma_cmd_wr_en),
-	.dma_cmd_wr_data0						(w_dma_cmd_wr_data0),
-	.dma_cmd_wr_data1						(w_dma_cmd_wr_data1),
+	.dma_cmd_wr_en							(w_dma_cmd_wr_en_mux),
+	.dma_cmd_wr_data0						(w_dma_cmd_wr_data0_mux),
+	.dma_cmd_wr_data1						(w_dma_cmd_wr_data1_mux),
 	.dma_cmd_wr_rdy_n						(w_dma_cmd_wr_rdy_n),
 
 	.dma_rx_direct_done_cnt					(w_dma_rx_direct_done_cnt),

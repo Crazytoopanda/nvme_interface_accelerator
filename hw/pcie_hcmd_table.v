@@ -53,6 +53,7 @@ http://www.hanyang.ac.kr/
 module pcie_hcmd_table # (
 	parameter 	P_SLOT_TAG_WIDTH			=  10, //slot_modified
 	parameter	P_DATA_WIDTH				= 128,
+	parameter	P_SQE_DATA_WIDTH			= 128,
 	parameter	P_ADDR_WIDTH				= P_SLOT_TAG_WIDTH+2 //slot_modified
 )
 (
@@ -64,13 +65,29 @@ module pcie_hcmd_table # (
 
 	input									rd_clk,
 	input	[P_ADDR_WIDTH+1:0]				rd_addr,
-	output	[31:0]							rd_data
+	output	[31:0]							rd_data,
+	output	[P_SQE_DATA_WIDTH-1:0]			rd_data_sqe
 );
 
 wire	[P_DATA_WIDTH-1:0]					w_rd_data;
 reg		[31:0]								r_rd_data;
 
 assign rd_data = r_rd_data;
+
+generate
+	if(P_SQE_DATA_WIDTH == 128) begin : GEN_SQE_RDATA_128
+		assign rd_data_sqe = w_rd_data;
+	end
+	else if(P_SQE_DATA_WIDTH == 64) begin : GEN_SQE_RDATA_64
+		assign rd_data_sqe = rd_addr[1] ? w_rd_data[127:64] : w_rd_data[63:0];
+	end
+	else begin : GEN_SQE_RDATA_32
+		assign rd_data_sqe = (rd_addr[1:0] == 2'b00) ? w_rd_data[31:0] :
+							 (rd_addr[1:0] == 2'b01) ? w_rd_data[63:32] :
+							 (rd_addr[1:0] == 2'b10) ? w_rd_data[95:64] :
+												 w_rd_data[127:96];
+	end
+endgenerate
 
 always @ (*)
 begin

@@ -54,7 +54,8 @@ module pcie_hcmd # (
 	parameter	C_PCIE_DATA_WIDTH			= 512,
 	parameter	C_PCIE_ADDR_WIDTH			= 48, //modified
 	parameter 	P_SLOT_TAG_WIDTH			=  10, //slot_modified
-	parameter 	P_SLOT_WIDTH				= 1024 //slot_modified
+	parameter 	P_SLOT_WIDTH				= 1024, //slot_modified
+	parameter	P_SQE_DATA_WIDTH			= 128
 )
 (
 	input									pcie_user_clk,
@@ -176,6 +177,7 @@ module pcie_hcmd # (
 
 	input	[(P_SLOT_TAG_WIDTH+2)+1:0]		hcmd_table_rd_addr, //slot_modified
 	output	[31:0]							hcmd_table_rd_data,
+	output	[P_SQE_DATA_WIDTH-1:0]			hcmd_table_rd_data_sqe,
 
 	input									hcmd_cq_wr1_en,
 	input	[(P_SLOT_TAG_WIDTH+28)-1:0]		hcmd_cq_wr1_data0,//slot_modified
@@ -222,7 +224,8 @@ wire	[7:0]								w_io_sq8_head_ptr;
 
 
 pcie_hcmd_table # (
-	.P_SLOT_TAG_WIDTH						(P_SLOT_TAG_WIDTH) //slot_modified
+	.P_SLOT_TAG_WIDTH						(P_SLOT_TAG_WIDTH), //slot_modified
+	.P_SQE_DATA_WIDTH						(P_SQE_DATA_WIDTH)
 )
 pcie_hcmd_table_inst0(
 	.wr_clk									(pcie_user_clk),
@@ -234,7 +237,8 @@ pcie_hcmd_table_inst0(
 	.rd_clk									(cpu_bus_clk),
 
 	.rd_addr								(hcmd_table_rd_addr),
-	.rd_data								(hcmd_table_rd_data)
+	.rd_data								(hcmd_table_rd_data),
+	.rd_data_sqe							(hcmd_table_rd_data_sqe)
 );
 
 pcie_hcmd_table_cid # (
