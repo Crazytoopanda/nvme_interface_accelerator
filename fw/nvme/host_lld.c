@@ -67,6 +67,12 @@ HOST_DMA_ASSIST_STATUS g_hostDmaAssistStatus;
 static unsigned int g_autoDmaTxCredit;
 static unsigned int g_autoDmaRxCredit;
 
+static inline void invalidate_sqe_cache_line(unsigned long long addr)
+{
+	__asm__ volatile("dc ivac, %0" :: "r" ((unsigned long)addr) : "memory");
+	__asm__ volatile("dsb sy" ::: "memory");
+}
+
 static unsigned int get_dma_fifo_credit(unsigned char head, unsigned char tail)
 {
 	return (unsigned int)((head - tail - 1) & 0xFF);
@@ -109,7 +115,7 @@ static void read_nvme_sqe(unsigned int cmdSlotTag, unsigned int *cmdDword)
 	unsigned long long addr;
 
 	addr = NVME_CMD_SQE_WINDOW_ADDR + ((unsigned long long)cmdSlotTag * NVME_CMD_SQE_SIZE);
-	Xil_DCacheInvalidateRange((UINTPTR)addr, NVME_CMD_SQE_SIZE);
+	invalidate_sqe_cache_line(addr);
 	__builtin_memcpy(cmdDword, (const void *)(unsigned long)addr, NVME_CMD_SQE_SIZE);
 }
 
@@ -465,34 +471,27 @@ void set_direct_rx_dma(unsigned long long devAddr, unsigned int pcieAddrH, unsig
 
 void set_auto_tx_dma(unsigned int cmdSlotTag, unsigned int cmd4KBOffset, unsigned long long devAddr, unsigned int autoCompletion)
 {
-	HOST_DMA_CMD_FIFO_REG hostDmaReg;
+	unsigned int dmaDword0;
+	unsigned int dmaDword3;
+	unsigned int dmaDword4;
+	unsigned int dmaDword5;
 	unsigned char tempTail;
 
 	ASSERT(cmd4KBOffset < 256);
 
 	wait_auto_tx_dma_credit();
 
-	hostDmaReg.devAddr = (unsigned int)(devAddr & 0xFFFFFFFFULL);
-	hostDmaReg.devAddrH = (unsigned int)((devAddr >> 32)
-										    & 0xFFFFFFFFULL);
+	dmaDword0 = (unsigned int)(devAddr & 0xFFFFFFFFULL);
+	dmaDword5 = (unsigned int)(devAddr >> 32);
+	dmaDword3 = (HOST_DMA_TX_DIRECTION << 30) |
+			((cmd4KBOffset & 0x1FFU) << 14) |
+			((autoCompletion & 0x1U) << 13);
+	dmaDword4 = cmdSlotTag;
 
-	hostDmaReg.dword[3] = 0;
-	hostDmaReg.dmaType = HOST_DMA_AUTO_TYPE;
-	hostDmaReg.dmaDirection = HOST_DMA_TX_DIRECTION;
-	hostDmaReg.cmd4KBOffset = cmd4KBOffset;
-	hostDmaReg.cmdSlotTag = cmdSlotTag;
-	hostDmaReg.autoCompletion = autoCompletion;
-
-	// xil_printf("[DMA auto TX] tag=%X off=%X dev=%08X_%08X ac=%X dw0=%08X dw3=%08X dw4=%08X dw5=%08X\r\n",
-	// 		cmdSlotTag, cmd4KBOffset, hostDmaReg.devAddrH, hostDmaReg.devAddr, autoCompletion,
-	// 		hostDmaReg.dword[0], hostDmaReg.dword[3], hostDmaReg.dword[4], hostDmaReg.dword[5]);
-
-	IO_WRITE32(HOST_DMA_CMD_FIFO_REG_ADDR, hostDmaReg.dword[0]);
-	IO_WRITE32((HOST_DMA_CMD_FIFO_REG_ADDR + 20), hostDmaReg.dword[5]);
-	//IO_WRITE32((HOST_DMA_CMD_FIFO_REG_ADDR + 4), hostDmaReg.dword[1]);
-	//IO_WRITE32((HOST_DMA_CMD_FIFO_REG_ADDR + 8), hostDmaReg.dword[2]);
-	IO_WRITE32((HOST_DMA_CMD_FIFO_REG_ADDR + 12), hostDmaReg.dword[3]);
-	IO_WRITE32((HOST_DMA_CMD_FIFO_REG_ADDR + 16), hostDmaReg.dword[4]);//slot_modified
+	IO_WRITE32(HOST_DMA_CMD_FIFO_REG_ADDR, dmaDword0);
+	IO_WRITE32((HOST_DMA_CMD_FIFO_REG_ADDR + 20), dmaDword5);
+	IO_WRITE32((HOST_DMA_CMD_FIFO_REG_ADDR + 12), dmaDword3);
+	IO_WRITE32((HOST_DMA_CMD_FIFO_REG_ADDR + 16), dmaDword4);
 	IO_WRITE32(HOST_DMA_CMD_FIFO_TRIG_ADDR, 1);  /* trigger */
 
 	tempTail = g_hostDmaStatus.fifoTail.autoDmaTx++;
@@ -506,34 +505,27 @@ void set_auto_tx_dma(unsigned int cmdSlotTag, unsigned int cmd4KBOffset, unsigne
 
 void set_auto_rx_dma(unsigned int cmdSlotTag, unsigned int cmd4KBOffset, unsigned long long devAddr, unsigned int autoCompletion)
 {
-	HOST_DMA_CMD_FIFO_REG hostDmaReg;
+	unsigned int dmaDword0;
+	unsigned int dmaDword3;
+	unsigned int dmaDword4;
+	unsigned int dmaDword5;
 	unsigned char tempTail;
 
 	ASSERT(cmd4KBOffset < 256);
 
 	wait_auto_rx_dma_credit();
 
-	hostDmaReg.devAddr = (unsigned int)(devAddr & 0xFFFFFFFFULL);
-	hostDmaReg.devAddrH = (unsigned int)((devAddr >> 32)
-										    & 0xFFFFFFFFULL);
+	dmaDword0 = (unsigned int)(devAddr & 0xFFFFFFFFULL);
+	dmaDword5 = (unsigned int)(devAddr >> 32);
+	dmaDword3 = (HOST_DMA_RX_DIRECTION << 30) |
+			((cmd4KBOffset & 0x1FFU) << 14) |
+			((autoCompletion & 0x1U) << 13);
+	dmaDword4 = cmdSlotTag;
 
-	hostDmaReg.dword[3] = 0;
-	hostDmaReg.dmaType = HOST_DMA_AUTO_TYPE;
-	hostDmaReg.dmaDirection = HOST_DMA_RX_DIRECTION;
-	hostDmaReg.cmd4KBOffset = cmd4KBOffset;
-	hostDmaReg.cmdSlotTag = cmdSlotTag;
-	hostDmaReg.autoCompletion = autoCompletion;
-
-	// xil_printf("[DMA auto RX] tag=%X off=%X dev=%08X_%08X ac=%X dw0=%08X dw3=%08X dw4=%08X dw5=%08X\r\n",
-	// 		cmdSlotTag, cmd4KBOffset, hostDmaReg.devAddrH, hostDmaReg.devAddr, autoCompletion,
-	// 		hostDmaReg.dword[0], hostDmaReg.dword[3], hostDmaReg.dword[4], hostDmaReg.dword[5]);
-
-	IO_WRITE32(HOST_DMA_CMD_FIFO_REG_ADDR, hostDmaReg.dword[0]);
-	IO_WRITE32((HOST_DMA_CMD_FIFO_REG_ADDR + 20), hostDmaReg.dword[5]);
-	//IO_WRITE32((HOST_DMA_CMD_FIFO_REG_ADDR + 4), hostDmaReg.dword[1]);
-	//IO_WRITE32((HOST_DMA_CMD_FIFO_REG_ADDR + 8), hostDmaReg.dword[2]);
-	IO_WRITE32((HOST_DMA_CMD_FIFO_REG_ADDR + 12), hostDmaReg.dword[3]);
-	IO_WRITE32((HOST_DMA_CMD_FIFO_REG_ADDR + 16), hostDmaReg.dword[4]);//slot_modified
+	IO_WRITE32(HOST_DMA_CMD_FIFO_REG_ADDR, dmaDword0);
+	IO_WRITE32((HOST_DMA_CMD_FIFO_REG_ADDR + 20), dmaDword5);
+	IO_WRITE32((HOST_DMA_CMD_FIFO_REG_ADDR + 12), dmaDword3);
+	IO_WRITE32((HOST_DMA_CMD_FIFO_REG_ADDR + 16), dmaDword4);
 	IO_WRITE32(HOST_DMA_CMD_FIFO_TRIG_ADDR, 1);  /* trigger */
 
 	tempTail = g_hostDmaStatus.fifoTail.autoDmaRx++;

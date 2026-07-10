@@ -59,96 +59,71 @@
 #include "nvme_io_cmd.h"
 #include "../memory_map.h"
 
-void handle_nvme_io_read(unsigned int cmdSlotTag, NVME_IO_COMMAND *nvmeIOCmd)
+static inline unsigned long long get_io_cmd_dev_addr(const unsigned int *cmdDword)
 {
-	unsigned int requestedNvmeBlock, dmaIndex, numOfNvmeBlock;
-	unsigned long long devAddr;
+	unsigned long long startLba;
 
-	IO_READ_COMMAND_DW12 readInfo12;
-	//IO_READ_COMMAND_DW13 readInfo13;
-	//IO_READ_COMMAND_DW15 readInfo15;
-	unsigned int startLba[2];
-	unsigned int nlb;
-
-	readInfo12.dword = nvmeIOCmd->dword[12];
-	//readInfo13.dword = nvmeIOCmd->dword[13];
-	//readInfo15.dword = nvmeIOCmd->dword[15];
-
-	startLba[0] = nvmeIOCmd->dword[10];
-	startLba[1] = nvmeIOCmd->dword[11];
-	nlb = readInfo12.NLB;
-	ASSERT(startLba[0] < STORAGE_CAPACITY_L && (startLba[1] < STORAGE_CAPACITY_H || startLba[1] == 0));
-	//ASSERT(nlb < MAX_NUM_OF_NLB);
-	ASSERT((nvmeIOCmd->PRP1[0] & 0x3) == 0 && (nvmeIOCmd->PRP2[0] & 0x3) == 0); //error
-	ASSERT(nvmeIOCmd->PRP1[1] < 0x10000 && nvmeIOCmd->PRP2[1] < 0x10000);
-
-    dmaIndex = 0;
-    requestedNvmeBlock = nlb + 1;
-    devAddr = DATA_BUFFER_BASE_ADDR + startLba[0] * BYTES_PER_NVME_BLOCK;
-    numOfNvmeBlock = 0;
-    
-    while(numOfNvmeBlock < requestedNvmeBlock)
-    {
-        set_auto_tx_dma(cmdSlotTag, dmaIndex, devAddr, NVME_COMMAND_AUTO_COMPLETION_ON);
-
-        numOfNvmeBlock++;
-        dmaIndex++;
-        devAddr += BYTES_PER_NVME_BLOCK;
-    }
+	startLba = ((unsigned long long)cmdDword[11] << 32) | cmdDword[10];
+	return DATA_BUFFER_BASE_ADDR + (startLba * BYTES_PER_NVME_BLOCK);
 }
 
-
-void handle_nvme_io_write(unsigned int cmdSlotTag, NVME_IO_COMMAND *nvmeIOCmd)
+static inline unsigned int get_io_cmd_nlb(const unsigned int *cmdDword)
 {
-	unsigned int requestedNvmeBlock, dmaIndex, numOfNvmeBlock;
+	return cmdDword[12] & 0xFFFFU;
+}
+
+static void handle_nvme_io_read_fast(unsigned int cmdSlotTag, const unsigned int *cmdDword)
+{
+	unsigned int requestedNvmeBlock;
+	unsigned int dmaIndex;
 	unsigned long long devAddr;
-	
-	IO_READ_COMMAND_DW12 writeInfo12;
-	//IO_READ_COMMAND_DW13 writeInfo13;
-	//IO_READ_COMMAND_DW15 writeInfo15;
-	unsigned int startLba[2];
-	unsigned int nlb;
 
-	writeInfo12.dword = nvmeIOCmd->dword[12];
-	//writeInfo13.dword = nvmeIOCmd->dword[13];
-	//writeInfo15.dword = nvmeIOCmd->dword[15];
+	requestedNvmeBlock = get_io_cmd_nlb(cmdDword) + 1;
+	devAddr = get_io_cmd_dev_addr(cmdDword);
 
-	//if(writeInfo12.FUA == 1)
-	//	xil_printf("write FUA\r\n");
+	if(requestedNvmeBlock == 1)
+	{
+		set_auto_tx_dma(cmdSlotTag, 0, devAddr, NVME_COMMAND_AUTO_COMPLETION_ON);
+		return;
+	}
 
-	startLba[0] = nvmeIOCmd->dword[10];
-	startLba[1] = nvmeIOCmd->dword[11];
-	nlb = writeInfo12.NLB;
+	for(dmaIndex = 0; dmaIndex < requestedNvmeBlock; dmaIndex++)
+	{
+		set_auto_tx_dma(cmdSlotTag, dmaIndex, devAddr, NVME_COMMAND_AUTO_COMPLETION_ON);
+		devAddr += BYTES_PER_NVME_BLOCK;
+	}
+}
 
-	ASSERT(startLba[0] < STORAGE_CAPACITY_L && (startLba[1] < STORAGE_CAPACITY_H || startLba[1] == 0));
-	//ASSERT(nlb < MAX_NUM_OF_NLB);
-	ASSERT((nvmeIOCmd->PRP1[0] & 0xF) == 0 && (nvmeIOCmd->PRP2[0] & 0xF) == 0);
-	ASSERT(nvmeIOCmd->PRP1[1] < 0x10000 && nvmeIOCmd->PRP2[1] < 0x10000);
+static void handle_nvme_io_write_fast(unsigned int cmdSlotTag, const unsigned int *cmdDword)
+{
+	unsigned int requestedNvmeBlock;
+	unsigned int dmaIndex;
+	unsigned long long devAddr;
 
-    dmaIndex = 0;
-    requestedNvmeBlock = nlb + 1;
-    devAddr = DATA_BUFFER_BASE_ADDR + startLba[0] * BYTES_PER_NVME_BLOCK;
-    numOfNvmeBlock = 0;
+	requestedNvmeBlock = get_io_cmd_nlb(cmdDword) + 1;
+	devAddr = get_io_cmd_dev_addr(cmdDword);
 
-    while(numOfNvmeBlock < requestedNvmeBlock)
-    {
-        set_auto_rx_dma(cmdSlotTag, dmaIndex, devAddr, NVME_COMMAND_AUTO_COMPLETION_ON);
+	if(requestedNvmeBlock == 1)
+	{
+		set_auto_rx_dma(cmdSlotTag, 0, devAddr, NVME_COMMAND_AUTO_COMPLETION_ON);
+		return;
+	}
 
-        numOfNvmeBlock++;
-        dmaIndex++;
-        devAddr += BYTES_PER_NVME_BLOCK;
-    }
+	for(dmaIndex = 0; dmaIndex < requestedNvmeBlock; dmaIndex++)
+	{
+		set_auto_rx_dma(cmdSlotTag, dmaIndex, devAddr, NVME_COMMAND_AUTO_COMPLETION_ON);
+		devAddr += BYTES_PER_NVME_BLOCK;
+	}
 }
 
 void handle_nvme_io_cmd(NVME_COMMAND *nvmeCmd)
 {
-	NVME_IO_COMMAND *nvmeIOCmd;
 	NVME_COMPLETION nvmeCPL;
+	unsigned int *cmdDword;
 	unsigned int opc;
 
-	nvmeIOCmd = (NVME_IO_COMMAND*)nvmeCmd->cmdDword;
-
-	opc = (unsigned int)nvmeIOCmd->OPC;
+	cmdDword = nvmeCmd->cmdDword;
+	opc = cmdDword[0] & 0xFFU;
 
 	switch(opc)
 	{
@@ -163,13 +138,13 @@ void handle_nvme_io_cmd(NVME_COMMAND *nvmeCmd)
 		case IO_NVM_WRITE:
 		{
 			PRINT("IO Write Command\r\n");
-			handle_nvme_io_write(nvmeCmd->cmdSlotTag, nvmeIOCmd);
+			handle_nvme_io_write_fast(nvmeCmd->cmdSlotTag, cmdDword);
 			break;
 		}
 		case IO_NVM_READ:
 		{
 			PRINT("IO Read Command\r\n");
-			handle_nvme_io_read(nvmeCmd->cmdSlotTag, nvmeIOCmd);
+			handle_nvme_io_read_fast(nvmeCmd->cmdSlotTag, cmdDword);
 			break;
 		}
 		default:
@@ -181,12 +156,16 @@ void handle_nvme_io_cmd(NVME_COMMAND *nvmeCmd)
 	}
 
 #if (__IO_CMD_DONE_MESSAGE_PRINT)
-    xil_printf("OPC = 0x%X\r\n", nvmeIOCmd->OPC);
-    xil_printf("PRP1[63:32] = 0x%X, PRP1[31:0] = 0x%X\r\n", nvmeIOCmd->PRP1[1], nvmeIOCmd->PRP1[0]);
-    xil_printf("PRP2[63:32] = 0x%X, PRP2[31:0] = 0x%X\r\n", nvmeIOCmd->PRP2[1], nvmeIOCmd->PRP2[0]);
-    xil_printf("dword10 = 0x%X\r\n", nvmeIOCmd->dword10);
-    xil_printf("dword11 = 0x%X\r\n", nvmeIOCmd->dword11);
-    xil_printf("dword12 = 0x%X\r\n", nvmeIOCmd->dword12);
+	{
+		NVME_IO_COMMAND *nvmeIOCmd;
+
+		nvmeIOCmd = (NVME_IO_COMMAND*)cmdDword;
+		xil_printf("OPC = 0x%X\r\n", nvmeIOCmd->OPC);
+		xil_printf("PRP1[63:32] = 0x%X, PRP1[31:0] = 0x%X\r\n", nvmeIOCmd->PRP1[1], nvmeIOCmd->PRP1[0]);
+		xil_printf("PRP2[63:32] = 0x%X, PRP2[31:0] = 0x%X\r\n", nvmeIOCmd->PRP2[1], nvmeIOCmd->PRP2[0]);
+		xil_printf("dword10 = 0x%X\r\n", nvmeIOCmd->dword10);
+		xil_printf("dword11 = 0x%X\r\n", nvmeIOCmd->dword11);
+		xil_printf("dword12 = 0x%X\r\n", nvmeIOCmd->dword12);
+	}
 #endif
 }
-

@@ -79,6 +79,7 @@ reg	[C_S_AXI_ADDR_WIDTH-1:0]			r_rd_addr;
 reg	[7:0]							r_rd_beats_left;
 reg	[1:0]							r_arburst;
 reg	[2:0]							r_word_index;
+reg	[2:0]							r_capture_index;
 reg	[2:0]							r_words_per_beat;
 reg	[7:0]							r_beat_bytes;
 reg	[C_S_AXI_DATA_WIDTH-1:0]			r_rdata;
@@ -114,9 +115,10 @@ assign w_ar_words_per_beat = (s_axi_arsize <= 3'd2) ? 3'd1 :
                              LP_WORDS_PER_BEAT;
 assign w_lane_base = (C_S_AXI_DATA_WIDTH == 128) ? {1'b0, r_rd_addr[3:2]} :
                      (C_S_AXI_DATA_WIDTH == 64)  ? {2'b0, r_rd_addr[2]} : 3'd0;
-assign w_lane_index = w_lane_base + r_word_index;
+assign w_lane_index = w_lane_base + r_capture_index;
 assign w_table_word_addr = r_rd_addr[(P_SLOT_TAG_WIDTH+2)+3:2] + r_word_index;
-assign hcmd_table_rd_active = (r_rd_state != LP_RD_IDLE);
+assign hcmd_table_rd_active = (r_rd_state == LP_RD_SET_ADDR) ||
+								((r_rd_state == LP_RD_CAPTURE) && (r_word_index < r_words_per_beat));
 assign hcmd_table_rd_addr = w_table_word_addr;
 
 always @ (posedge s_axi_aclk or negedge s_axi_aresetn)
@@ -128,6 +130,7 @@ begin
 		r_rd_beats_left <= 0;
 		r_arburst <= 0;
 		r_word_index <= 0;
+		r_capture_index <= 0;
 		r_words_per_beat <= 0;
 		r_beat_bytes <= 0;
 		r_rdata <= 0;
@@ -141,6 +144,7 @@ begin
 					r_rd_beats_left <= s_axi_arlen;
 					r_arburst <= s_axi_arburst;
 					r_word_index <= 0;
+					r_capture_index <= 0;
 					r_words_per_beat <= w_ar_words_per_beat;
 					r_beat_bytes <= w_ar_beat_bytes;
 					r_rdata <= 0;
@@ -148,17 +152,20 @@ begin
 				end
 			end
 			LP_RD_SET_ADDR: begin
+				r_capture_index <= r_word_index;
+				r_word_index <= r_word_index + 1;
 				r_rd_state <= LP_RD_CAPTURE;
 			end
 			LP_RD_CAPTURE: begin
 				r_rdata[(w_lane_index * 32) +: 32] <= hcmd_table_rd_data;
-				if(r_word_index == (r_words_per_beat - 1)) begin
-					r_word_index <= 0;
-					r_rd_state <= LP_RD_SEND;
-				end
-				else begin
+				if(r_word_index < r_words_per_beat) begin
+					r_capture_index <= r_word_index;
 					r_word_index <= r_word_index + 1;
-					r_rd_state <= LP_RD_SET_ADDR;
+				end
+				else if(r_capture_index == (r_words_per_beat - 1)) begin
+					r_word_index <= 0;
+					r_capture_index <= 0;
+					r_rd_state <= LP_RD_SEND;
 				end
 			end
 			LP_RD_SEND: begin
@@ -171,6 +178,7 @@ begin
 							r_rd_addr <= r_rd_addr + r_beat_bytes;
 						r_rd_beats_left <= r_rd_beats_left - 1;
 						r_word_index <= 0;
+						r_capture_index <= 0;
 						r_rdata <= 0;
 						r_rd_state <= LP_RD_SET_ADDR;
 					end
