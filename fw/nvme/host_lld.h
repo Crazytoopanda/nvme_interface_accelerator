@@ -54,8 +54,8 @@
 #ifndef __HOST_LLD_H_
 #define __HOST_LLD_H_
 
-
-#define HOST_IP_ADDR						(XPAR_NVME_CTRL_0_BASEADDR)
+/* need to notice here after updating hardware */
+#define HOST_IP_ADDR						(0xA0000000ULL) 
 
 #define DEV_IRQ_MASK_REG_ADDR				(HOST_IP_ADDR + 0x4)
 #define DEV_IRQ_CLEAR_REG_ADDR				(HOST_IP_ADDR + 0x8)
@@ -77,6 +77,10 @@
 #define HOST_CPL_FIFO_TRIG_ADDR 		    (HOST_IP_ADDR + 0x340)
 
 #define NVME_CMD_SRAM_ADDR					(HOST_IP_ADDR + 0x10000)
+
+/* need to notice here after updating hardware */
+#define NVME_CMD_SQE_WINDOW_ADDR			(0xA0200000ULL)
+#define NVME_CMD_SQE_SIZE					(64)
 
 
 
@@ -334,6 +338,8 @@ void dev_irq_init();
 void dev_irq_handler();
 
 void reset_host_dma_credit();
+
+void restore_dev_irq_mask();
 
 unsigned int check_nvme_cc_en();
 

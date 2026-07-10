@@ -52,6 +52,7 @@
 
 #include "stdio.h"
 #include "xil_exception.h"
+#include "xil_cache.h"
 #include "xil_printf.h"
 #include "debug.h"
 #include "io_access.h"
@@ -103,6 +104,15 @@ void reset_host_dma_credit(void)
 	g_autoDmaRxCredit = 0;
 }
 
+static void read_nvme_sqe(unsigned int cmdSlotTag, unsigned int *cmdDword)
+{
+	unsigned long long addr;
+
+	addr = NVME_CMD_SQE_WINDOW_ADDR + ((unsigned long long)cmdSlotTag * NVME_CMD_SQE_SIZE);
+	Xil_DCacheInvalidateRange((UINTPTR)addr, NVME_CMD_SQE_SIZE);
+	__builtin_memcpy(cmdDword, (const void *)(unsigned long)addr, NVME_CMD_SQE_SIZE);
+}
+
 void dev_irq_init()
 {
 	DEV_IRQ_REG devReg;
@@ -132,7 +142,7 @@ void dev_irq_handler()
 
 	devReg.dword = IO_READ32(DEV_IRQ_STATUS_REG_ADDR);
 	IO_WRITE32(DEV_IRQ_CLEAR_REG_ADDR, devReg.dword);
-//	xil_printf("IRQ: 0x%X\r\n", devReg.dword);
+	// xil_printf("IRQ: 0x%X\r\n", devReg.dword);
 
 	if(devReg.pcieLink == 1)
 	{
@@ -288,15 +298,11 @@ unsigned int get_nvme_cmd(unsigned short *qID, unsigned short *cmdSlotTag, unsig
 
 	if(nvmeReg.cmdValid == 1)
 	{
-		unsigned long long addr;
-		unsigned int idx;
 		*qID = nvmeReg.qID;
 		*cmdSlotTag = nvmeReg.cmdSlotTag;
 		*cmdSeqNum = nvmeReg.cmdSeqNum;
 
-		addr = NVME_CMD_SRAM_ADDR + (nvmeReg.cmdSlotTag * 64);
-		for(idx = 0; idx < 16; idx++)
-			*(cmdDword + idx) = IO_READ32(addr + (idx * 4));
+		read_nvme_sqe(nvmeReg.cmdSlotTag, cmdDword);
 	}
 
 	return (unsigned int)nvmeReg.cmdValid;

@@ -103,11 +103,13 @@ int main()
 			Xil_SetTlbAttributes(u * MB, STRONG_ORDERED);
 	}
 
-	for (u64 addr = DRAM_START_ADDR;
-		addr <= DRAM_END_ADDR; addr += 2 * MB)
-	{
-		Xil_SetTlbAttributes(addr, NORM_WB_CACHE);
-	}
+	Xil_SetTlbAttributes(NVME_CMD_SQE_WINDOW_ADDR, NORM_WB_CACHE);
+
+	 for (u64 addr = DRAM_START_ADDR;
+	 	addr <= DRAM_END_ADDR; addr += 2 * MB)
+	 {
+	 	Xil_SetTlbAttributes(addr, NORM_WB_CACHE);
+	 }
 
 	Xil_ICacheEnable();
 	Xil_DCacheEnable();

@@ -62,6 +62,11 @@ module user_top # (
 	parameter	C_S0_AXI_DATA_WIDTH			= 32,
 	parameter	C_S0_AXI_BASEADDR			= 32'hA0000000,
 	parameter	C_S0_AXI_HIGHADDR			= 32'hA001FFFF,
+	parameter	C_S1_AXI_ADDR_WIDTH			= 32,
+	parameter	C_S1_AXI_DATA_WIDTH			= 128,
+	parameter	C_S1_AXI_ID_WIDTH			= 1,
+	parameter	C_S1_AXI_BASEADDR			= 32'hA0200000,
+	parameter	C_S1_AXI_HIGHADDR			= 32'hA03FFFFF,
 
 	parameter	C_M0_AXI_ADDR_WIDTH			= 64,
 	parameter	C_M0_AXI_DATA_WIDTH			= 512,
@@ -132,6 +137,55 @@ module user_top # (
 	input									s0_axi_rready,
 	output	[C_S0_AXI_DATA_WIDTH-1 : 0]		s0_axi_rdata,
 	output	[1 : 0]							s0_axi_rresp,
+
+////////////////////////////////////////////////////////////////
+//AXI4 SQE window slave interface signals
+	input									s1_axi_aclk,
+	input									s1_axi_aresetn,
+
+	input	[C_S1_AXI_ID_WIDTH-1:0]			s1_axi_awid,
+	input	[C_S1_AXI_ADDR_WIDTH-1:0]		s1_axi_awaddr,
+	input	[7:0]							s1_axi_awlen,
+	input	[2:0]							s1_axi_awsize,
+	input	[1:0]							s1_axi_awburst,
+	input	[1:0]							s1_axi_awlock,
+	input	[3:0]							s1_axi_awcache,
+	input	[2:0]							s1_axi_awprot,
+	input	[3:0]							s1_axi_awregion,
+	input	[3:0]							s1_axi_awqos,
+	input									s1_axi_awvalid,
+	output									s1_axi_awready,
+
+	input	[C_S1_AXI_DATA_WIDTH-1:0]		s1_axi_wdata,
+	input	[(C_S1_AXI_DATA_WIDTH/8)-1:0]	s1_axi_wstrb,
+	input									s1_axi_wlast,
+	input									s1_axi_wvalid,
+	output									s1_axi_wready,
+
+	output	[C_S1_AXI_ID_WIDTH-1:0]			s1_axi_bid,
+	output	[1:0]							s1_axi_bresp,
+	output									s1_axi_bvalid,
+	input									s1_axi_bready,
+
+	input	[C_S1_AXI_ID_WIDTH-1:0]			s1_axi_arid,
+	input	[C_S1_AXI_ADDR_WIDTH-1:0]		s1_axi_araddr,
+	input	[7:0]							s1_axi_arlen,
+	input	[2:0]							s1_axi_arsize,
+	input	[1:0]							s1_axi_arburst,
+	input	[1:0]							s1_axi_arlock,
+	input	[3:0]							s1_axi_arcache,
+	input	[2:0]							s1_axi_arprot,
+	input	[3:0]							s1_axi_arregion,
+	input	[3:0]							s1_axi_arqos,
+	input									s1_axi_arvalid,
+	output									s1_axi_arready,
+
+	output	[C_S1_AXI_ID_WIDTH-1:0]			s1_axi_rid,
+	output	[C_S1_AXI_DATA_WIDTH-1:0]		s1_axi_rdata,
+	output	[1:0]							s1_axi_rresp,
+	output									s1_axi_rlast,
+	output									s1_axi_rvalid,
+	input									s1_axi_rready,
 
 ////////////////////////////////////////////////////////////////
 //AXI4 master interface signals
@@ -503,7 +557,10 @@ wire	[2:0]								w_io_cq7_iv_sync;
 wire	[2:0]								w_io_cq8_iv_sync;
 
 wire	[(P_SLOT_TAG_WIDTH+2)+1:0]			w_hcmd_table_rd_addr; //slot_modified
+wire	[(P_SLOT_TAG_WIDTH+2)+1:0]			w_s0_hcmd_table_rd_addr; //slot_modified
+wire	[(P_SLOT_TAG_WIDTH+2)+1:0]			w_s1_hcmd_table_rd_addr; //slot_modified
 wire	[31:0]								w_hcmd_table_rd_data;
+wire										w_s1_hcmd_table_rd_active;
 
 wire										w_hcmd_sq_rd_en;
 wire	[(P_SLOT_TAG_WIDTH+12)-1:0]			w_hcmd_sq_rd_data; //slot_modified
@@ -518,6 +575,9 @@ wire										w_dma_cmd_wr_en;
 wire	[C_M0_AXI_ADDR_WIDTH+23:0]			w_dma_cmd_wr_data0; //modified
 wire	[C_M0_AXI_ADDR_WIDTH+23:0]			w_dma_cmd_wr_data1; //modified
 wire										w_dma_cmd_wr_rdy_n;
+
+assign w_hcmd_table_rd_addr = w_s1_hcmd_table_rd_active ? w_s1_hcmd_table_rd_addr :
+								 w_s0_hcmd_table_rd_addr;
 
 wire	[7:0]								w_dma_rx_direct_done_cnt;
 wire	[7:0]								w_dma_tx_direct_done_cnt;
@@ -645,6 +705,66 @@ sys_rst_inst0(
 
 );
 
+
+axi_sqe_window #(
+	.P_SLOT_TAG_WIDTH						(P_SLOT_TAG_WIDTH),
+	.C_S_AXI_ID_WIDTH						(C_S1_AXI_ID_WIDTH),
+	.C_S_AXI_ADDR_WIDTH					(C_S1_AXI_ADDR_WIDTH),
+	.C_S_AXI_DATA_WIDTH					(C_S1_AXI_DATA_WIDTH)
+)
+axi_sqe_window_inst0 (
+	.s_axi_aclk							(s1_axi_aclk),
+	.s_axi_aresetn						(s1_axi_aresetn),
+
+	.s_axi_awid							(s1_axi_awid),
+	.s_axi_awaddr						(s1_axi_awaddr),
+	.s_axi_awlen						(s1_axi_awlen),
+	.s_axi_awsize						(s1_axi_awsize),
+	.s_axi_awburst						(s1_axi_awburst),
+	.s_axi_awlock						(s1_axi_awlock),
+	.s_axi_awcache						(s1_axi_awcache),
+	.s_axi_awprot						(s1_axi_awprot),
+	.s_axi_awregion					(s1_axi_awregion),
+	.s_axi_awqos						(s1_axi_awqos),
+	.s_axi_awvalid						(s1_axi_awvalid),
+	.s_axi_awready						(s1_axi_awready),
+
+	.s_axi_wdata						(s1_axi_wdata),
+	.s_axi_wstrb						(s1_axi_wstrb),
+	.s_axi_wlast						(s1_axi_wlast),
+	.s_axi_wvalid						(s1_axi_wvalid),
+	.s_axi_wready						(s1_axi_wready),
+
+	.s_axi_bid							(s1_axi_bid),
+	.s_axi_bresp						(s1_axi_bresp),
+	.s_axi_bvalid						(s1_axi_bvalid),
+	.s_axi_bready						(s1_axi_bready),
+
+	.s_axi_arid							(s1_axi_arid),
+	.s_axi_araddr						(s1_axi_araddr),
+	.s_axi_arlen						(s1_axi_arlen),
+	.s_axi_arsize						(s1_axi_arsize),
+	.s_axi_arburst						(s1_axi_arburst),
+	.s_axi_arlock						(s1_axi_arlock),
+	.s_axi_arcache						(s1_axi_arcache),
+	.s_axi_arprot						(s1_axi_arprot),
+	.s_axi_arregion					(s1_axi_arregion),
+	.s_axi_arqos						(s1_axi_arqos),
+	.s_axi_arvalid						(s1_axi_arvalid),
+	.s_axi_arready						(s1_axi_arready),
+
+	.s_axi_rid							(s1_axi_rid),
+	.s_axi_rdata						(s1_axi_rdata),
+	.s_axi_rresp						(s1_axi_rresp),
+	.s_axi_rlast						(s1_axi_rlast),
+	.s_axi_rvalid						(s1_axi_rvalid),
+	.s_axi_rready						(s1_axi_rready),
+
+	.hcmd_table_rd_active			(w_s1_hcmd_table_rd_active),
+	.hcmd_table_rd_addr				(w_s1_hcmd_table_rd_addr),
+	.hcmd_table_rd_data				(w_hcmd_table_rd_data)
+);
+
 s_axi_top # (
 	.P_SLOT_TAG_WIDTH						(P_SLOT_TAG_WIDTH), //slot_modified
 	.C_S0_AXI_ADDR_WIDTH					(C_S0_AXI_ADDR_WIDTH),
@@ -767,7 +887,7 @@ s_axi_top_inst0 (
 	.hcmd_sq_rd_data						(w_hcmd_sq_rd_data),
 	.hcmd_sq_empty_n						(w_hcmd_sq_empty_n),
 
-	.hcmd_table_rd_addr						(w_hcmd_table_rd_addr),
+	.hcmd_table_rd_addr						(w_s0_hcmd_table_rd_addr),
 	.hcmd_table_rd_data						(w_hcmd_table_rd_data),
 
 	.hcmd_cq_wr1_en							(w_hcmd_cq_wr1_en),

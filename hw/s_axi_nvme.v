@@ -8,6 +8,11 @@ module s_axi_nvme # (
 	parameter C_S0_AXI_DATA_WIDTH			= 32,
 	parameter C_S0_AXI_BASEADDR				= 32'hA0000000,
 	parameter C_S0_AXI_HIGHADDR				= 32'hA001FFFF,
+	parameter C_S1_AXI_ADDR_WIDTH			= 32,
+	parameter C_S1_AXI_DATA_WIDTH			= 128,
+	parameter C_S1_AXI_ID_WIDTH				= 1,
+	parameter C_S1_AXI_BASEADDR				= 32'hA0200000,
+	parameter C_S1_AXI_HIGHADDR				= 32'hA03FFFFF,
 
 	parameter C_M0_AXI_ADDR_WIDTH			= 64,
 	parameter C_M0_AXI_DATA_WIDTH			= 512,
@@ -77,6 +82,55 @@ module s_axi_nvme # (
 	input									s0_axi_rready,
 	output	[C_S0_AXI_DATA_WIDTH-1 : 0]		s0_axi_rdata,
 	output	[1 : 0]							s0_axi_rresp,
+
+////////////////////////////////////////////////////////////////
+//AXI4 SQE window slave interface signals
+	input									s1_axi_aclk,
+	input									s1_axi_aresetn,
+
+	input	[C_S1_AXI_ID_WIDTH-1:0]			s1_axi_awid,
+	input	[C_S1_AXI_ADDR_WIDTH-1:0]		s1_axi_awaddr,
+	input	[7:0]							s1_axi_awlen,
+	input	[2:0]							s1_axi_awsize,
+	input	[1:0]							s1_axi_awburst,
+	input	[1:0]							s1_axi_awlock,
+	input	[3:0]							s1_axi_awcache,
+	input	[2:0]							s1_axi_awprot,
+	input	[3:0]							s1_axi_awregion,
+	input	[3:0]							s1_axi_awqos,
+	input									s1_axi_awvalid,
+	output									s1_axi_awready,
+
+	input	[C_S1_AXI_DATA_WIDTH-1:0]		s1_axi_wdata,
+	input	[(C_S1_AXI_DATA_WIDTH/8)-1:0]	s1_axi_wstrb,
+	input									s1_axi_wlast,
+	input									s1_axi_wvalid,
+	output									s1_axi_wready,
+
+	output	[C_S1_AXI_ID_WIDTH-1:0]			s1_axi_bid,
+	output	[1:0]							s1_axi_bresp,
+	output									s1_axi_bvalid,
+	input									s1_axi_bready,
+
+	input	[C_S1_AXI_ID_WIDTH-1:0]			s1_axi_arid,
+	input	[C_S1_AXI_ADDR_WIDTH-1:0]		s1_axi_araddr,
+	input	[7:0]							s1_axi_arlen,
+	input	[2:0]							s1_axi_arsize,
+	input	[1:0]							s1_axi_arburst,
+	input	[1:0]							s1_axi_arlock,
+	input	[3:0]							s1_axi_arcache,
+	input	[2:0]							s1_axi_arprot,
+	input	[3:0]							s1_axi_arregion,
+	input	[3:0]							s1_axi_arqos,
+	input									s1_axi_arvalid,
+	output									s1_axi_arready,
+
+	output	[C_S1_AXI_ID_WIDTH-1:0]			s1_axi_rid,
+	output	[C_S1_AXI_DATA_WIDTH-1:0]		s1_axi_rdata,
+	output	[1:0]							s1_axi_rresp,
+	output									s1_axi_rlast,
+	output									s1_axi_rvalid,
+	input									s1_axi_rready,
 
 
 ////////////////////////////////////////////////////////////////
@@ -335,6 +389,11 @@ user_top # (
 	.C_S0_AXI_DATA_WIDTH					(C_S0_AXI_DATA_WIDTH),
 	.C_S0_AXI_BASEADDR						(C_S0_AXI_BASEADDR),
 	.C_S0_AXI_HIGHADDR						(C_S0_AXI_HIGHADDR),
+	.C_S1_AXI_ADDR_WIDTH					(C_S1_AXI_ADDR_WIDTH),
+	.C_S1_AXI_DATA_WIDTH					(C_S1_AXI_DATA_WIDTH),
+	.C_S1_AXI_ID_WIDTH						(C_S1_AXI_ID_WIDTH),
+	.C_S1_AXI_BASEADDR						(C_S1_AXI_BASEADDR),
+	.C_S1_AXI_HIGHADDR						(C_S1_AXI_HIGHADDR),
 
 	.C_M0_AXI_ADDR_WIDTH					(C_M0_AXI_ADDR_WIDTH),
 	.C_M0_AXI_DATA_WIDTH					(C_M0_AXI_DATA_WIDTH),
@@ -380,6 +439,55 @@ user_top_inst0 (
 	.s0_axi_rready							(s0_axi_rready),
 	.s0_axi_rdata							(s0_axi_rdata),
 	.s0_axi_rresp							(s0_axi_rresp),
+
+////////////////////////////////////////////////////////////////
+//AXI4 SQE window slave interface signals
+	.s1_axi_aclk							(s1_axi_aclk),
+	.s1_axi_aresetn						(s1_axi_aresetn),
+
+	.s1_axi_awid							(s1_axi_awid),
+	.s1_axi_awaddr						(s1_axi_awaddr),
+	.s1_axi_awlen						(s1_axi_awlen),
+	.s1_axi_awsize						(s1_axi_awsize),
+	.s1_axi_awburst						(s1_axi_awburst),
+	.s1_axi_awlock						(s1_axi_awlock),
+	.s1_axi_awcache						(s1_axi_awcache),
+	.s1_axi_awprot						(s1_axi_awprot),
+	.s1_axi_awregion					(s1_axi_awregion),
+	.s1_axi_awqos						(s1_axi_awqos),
+	.s1_axi_awvalid						(s1_axi_awvalid),
+	.s1_axi_awready						(s1_axi_awready),
+
+	.s1_axi_wdata						(s1_axi_wdata),
+	.s1_axi_wstrb						(s1_axi_wstrb),
+	.s1_axi_wlast						(s1_axi_wlast),
+	.s1_axi_wvalid						(s1_axi_wvalid),
+	.s1_axi_wready						(s1_axi_wready),
+
+	.s1_axi_bid							(s1_axi_bid),
+	.s1_axi_bresp						(s1_axi_bresp),
+	.s1_axi_bvalid						(s1_axi_bvalid),
+	.s1_axi_bready						(s1_axi_bready),
+
+	.s1_axi_arid							(s1_axi_arid),
+	.s1_axi_araddr						(s1_axi_araddr),
+	.s1_axi_arlen						(s1_axi_arlen),
+	.s1_axi_arsize						(s1_axi_arsize),
+	.s1_axi_arburst						(s1_axi_arburst),
+	.s1_axi_arlock						(s1_axi_arlock),
+	.s1_axi_arcache						(s1_axi_arcache),
+	.s1_axi_arprot						(s1_axi_arprot),
+	.s1_axi_arregion					(s1_axi_arregion),
+	.s1_axi_arqos						(s1_axi_arqos),
+	.s1_axi_arvalid						(s1_axi_arvalid),
+	.s1_axi_arready						(s1_axi_arready),
+
+	.s1_axi_rid							(s1_axi_rid),
+	.s1_axi_rdata						(s1_axi_rdata),
+	.s1_axi_rresp						(s1_axi_rresp),
+	.s1_axi_rlast						(s1_axi_rlast),
+	.s1_axi_rvalid						(s1_axi_rvalid),
+	.s1_axi_rready						(s1_axi_rready),
 
 ////////////////////////////////////////////////////////////////
 //AXI4 master interface signals
