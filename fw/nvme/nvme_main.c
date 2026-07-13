@@ -113,6 +113,8 @@ void nvme_main()
 			unsigned int cmdValid;
 
 			ssd_model_poll();
+			if(g_nvmeTask.status != NVME_TASK_RUNNING)
+				continue;
 
 			cmdValid = get_nvme_cmd(&nvmeCmd.qID, &nvmeCmd.cmdSlotTag, &nvmeCmd.cmdSeqNum, nvmeCmd.cmdDword);
 
@@ -148,7 +150,6 @@ void nvme_main()
 				g_nvmeTask.cacheEn = 0;
 				nvme_smp_disable_io();
 				nvme_smp_reset_queues();
-				ssd_model_reset();
 				reset_host_dma_credit();
 				set_nvme_csts_shst(2);
 				g_nvmeTask.status = NVME_TASK_WAIT_RESET;

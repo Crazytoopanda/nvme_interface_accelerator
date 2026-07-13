@@ -60,7 +60,7 @@
 #include "nvme.h"
 #include "host_lld.h"
 
-extern NVME_CONTEXT g_nvmeTask;
+extern volatile NVME_CONTEXT g_nvmeTask;
 HOST_DMA_STATUS g_hostDmaStatus;
 HOST_DMA_ASSIST_STATUS g_hostDmaAssistStatus;
 
@@ -219,6 +219,8 @@ void dev_irq_handler()
 		if(nvmeReg.ccShn != 0)
 		{
 			xil_printf("NVME CC.SHN: %d\r\n", nvmeReg.ccShn);
+			set_nvme_csts_shst(1);
+			set_nvme_csts_shst(2);
 			g_nvmeTask.status = NVME_TASK_SHUTDOWN;
 		}
 	}
