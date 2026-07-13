@@ -89,6 +89,12 @@ void controller_identification(unsigned long long pBuffer)
 	identifyCNTL->MDTS = 0x8;
 	identifyCNTL->CNTLID = 0x9;
 
+	/* NVMe 1.3+ controller capacity fields: TNVMCAP at 280, UNVMCAP at 296. */
+	((unsigned long long *)((unsigned char *)identifyCNTL + 280))[0] = NVME_STORAGE;
+	((unsigned long long *)((unsigned char *)identifyCNTL + 280))[1] = 0;
+	((unsigned long long *)((unsigned char *)identifyCNTL + 296))[0] = 0;
+	((unsigned long long *)((unsigned char *)identifyCNTL + 296))[1] = 0;
+
 	identifyCNTL->OACS.supportsSecuritySendSecurityReceive = 0x0;
 	identifyCNTL->OACS.supportsFormatNVM = 0x0;
 	identifyCNTL->OACS.supportsFirmwareActivateFirmwareDownload = 0x0;

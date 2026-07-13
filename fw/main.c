@@ -72,45 +72,59 @@
 #include "nvme/nvme.h"
 #include "nvme/nvme_main.h"
 #include "nvme/host_lld.h"
+#include "nvme/nvme_smp.h"
 
 #include "memory_map.h"
+
+#ifndef NVME_USE_STATIC_MMU_TABLE
+#define NVME_USE_STATIC_MMU_TABLE 1
+#endif
 
 
 XScuGic GicInstance;
 
 int main()
 {
+#if !NVME_USE_STATIC_MMU_TABLE
 	unsigned int u;
+#endif
+	unsigned int coreId;
 
 	XScuGic_Config *IntcConfig;
+
+	coreId = nvme_smp_get_core_id();
+	if(coreId != 0)
+		nvme_smp_start_worker(coreId);
 
 	Xil_ICacheDisable();
 	Xil_DCacheDisable();
 
 	// Paging table set
-	#define MB (1024ULL * 1024ULL)
+	#define MMU_MB (1024ULL * 1024ULL)
+#if !NVME_USE_STATIC_MMU_TABLE
 	for (u = 0; u < 4096; u+=2)
 	{
 		if (u < 0x2)
-			Xil_SetTlbAttributes(u * MB, NORM_WB_CACHE);
+			Xil_SetTlbAttributes(u * MMU_MB, NORM_WB_CACHE);
 		else if (u < 0x180)
-			Xil_SetTlbAttributes(u * MB, NORM_NONCACHE);
+			Xil_SetTlbAttributes(u * MMU_MB, NORM_NONCACHE);
 		else if (u < 0x400)
-			Xil_SetTlbAttributes(u * MB, NORM_WB_CACHE);
+			Xil_SetTlbAttributes(u * MMU_MB, NORM_WB_CACHE);
 		else if (u < 0x800)
-			Xil_SetTlbAttributes(u * MB, NORM_NONCACHE);
+			Xil_SetTlbAttributes(u * MMU_MB, NORM_NONCACHE);
 		else
-			Xil_SetTlbAttributes(u * MB, STRONG_ORDERED);
+			Xil_SetTlbAttributes(u * MMU_MB, STRONG_ORDERED);
 	}
 
 	Xil_SetTlbAttributes(NVME_CMD_SQE_WINDOW_ADDR, NORM_WB_CACHE);
 	Xil_SetTlbAttributes(HOST_DMA_PACKED_SUBMIT_ADDR, NORM_NONCACHE);
 
-	 for (u64 addr = DRAM_START_ADDR;
-	 	addr <= DRAM_END_ADDR; addr += 2 * MB)
-	 {
-	 	Xil_SetTlbAttributes(addr, NORM_WB_CACHE);
-	 }
+	for (u64 addr = DRAM_START_ADDR;
+		addr <= DRAM_END_ADDR; addr += 2 * MMU_MB)
+	{
+		Xil_SetTlbAttributes(addr, NORM_WB_CACHE);
+	}
+#endif
 
 	Xil_ICacheEnable();
 	Xil_DCacheEnable();

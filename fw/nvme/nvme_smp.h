@@ -7,8 +7,11 @@
 #define __NVME_SMP_H_
 
 #include "nvme.h"
+#include "ssd_config.h"
 
+#ifndef NVME_SMP_NUM_CORES
 #define NVME_SMP_NUM_CORES			1
+#endif
 #define NVME_SMP_CMD_QUEUE_DEPTH	32
 
 unsigned int nvme_smp_get_core_id(void);
@@ -27,5 +30,6 @@ void nvme_io_submit_lock(void);
 void nvme_io_submit_unlock(void);
 void nvme_smp_worker_entry(unsigned int coreId) __attribute__((noreturn));
 extern unsigned long g_nvmeSmpWorkerStack[NVME_SMP_NUM_CORES][2048];
+extern volatile unsigned int g_nvmeSmpWorkerDebug[NVME_SMP_NUM_CORES];
 
 #endif	//__NVME_SMP_H_

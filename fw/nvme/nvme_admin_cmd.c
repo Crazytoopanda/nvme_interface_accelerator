@@ -55,6 +55,7 @@
 #include "host_lld.h"
 #include "nvme_identify.h"
 #include "nvme_admin_cmd.h"
+#include "ssd_model.h"
 #include "../memory_map.h"
 
 extern NVME_CONTEXT g_nvmeTask;
@@ -361,11 +362,12 @@ void handle_identify(NVME_ADMIN_COMMAND *nvmeAdminCmd, NVME_COMPLETION *nvmeCPL)
 {
 	ADMIN_IDENTIFY_COMMAND_DW10 identifyInfo;
 	unsigned long long pIdentifyData = NVME_MANAGEMENT_START_ADDR;
-	unsigned long long pIdentifyBase = pIdentifyData;	unsigned int prp[2];
+	unsigned long long pIdentifyBase = pIdentifyData;
+	unsigned int prp[2];
 	unsigned int prpLen;
 	identifyInfo.dword = nvmeAdminCmd->dword10;
 
-	if(identifyInfo.CNS == 1)//CI: Controller Identify
+	if(identifyInfo.CNS == 1 || identifyInfo.CNS == 6)//CI: Controller Identify
 	{
 		if((nvmeAdminCmd->PRP1[0] & 0x3) != 0 || (nvmeAdminCmd->PRP2[0] & 0x3) != 0)
 			xil_printf("CI: PRP1 = 0x%08X_%08X, PRP2 = %08X_%08X\r\n", nvmeAdminCmd->PRP1[1], nvmeAdminCmd->PRP1[0], nvmeAdminCmd->PRP2[1], nvmeAdminCmd->PRP2[0]);
@@ -373,14 +375,18 @@ void handle_identify(NVME_ADMIN_COMMAND *nvmeAdminCmd, NVME_COMPLETION *nvmeCPL)
 		ASSERT((nvmeAdminCmd->PRP1[0] & 0x3) == 0 && (nvmeAdminCmd->PRP2[0] & 0x3) == 0);
 		controller_identification(pIdentifyData);
 	}
-	else if(identifyInfo.CNS == 2)//Active Namespace ID list
+	else if(identifyInfo.CNS == 2 || identifyInfo.CNS == 7)//Active Namespace ID list
 	{
 		unsigned int *namespaceList = (unsigned int *)pIdentifyData;
 
 		memset(namespaceList, 0, 0x1000);
 		namespaceList[0] = 1;
 	}
-	else if(identifyInfo.CNS == 0)//NI: Namespace Identify
+	else if(identifyInfo.CNS == 3)//Namespace Identification Descriptor list
+	{
+		memset((void *)pIdentifyData, 0, 0x1000);
+	}
+	else if(identifyInfo.CNS == 0 || identifyInfo.CNS == 5)//NI: Namespace Identify
 	{
 		if((nvmeAdminCmd->PRP1[0] & 0x3) != 0 || (nvmeAdminCmd->PRP2[0] & 0x3) != 0)
 			xil_printf("NI: 0xPRP1 = %08X_%08X, PRP2 = %08X_%08X\r\n", nvmeAdminCmd->PRP1[1], nvmeAdminCmd->PRP1[0], nvmeAdminCmd->PRP2[1], nvmeAdminCmd->PRP2[0]);
@@ -390,7 +396,14 @@ void handle_identify(NVME_ADMIN_COMMAND *nvmeAdminCmd, NVME_COMPLETION *nvmeCPL)
 		namespace_identification(pIdentifyData);
 	}
 	else
-		ASSERT(0);
+	{
+		xil_printf("Unsupported Identify CNS: 0x%X\r\n", identifyInfo.CNS);
+		nvmeCPL->dword[0] = 0;
+		nvmeCPL->specific = 0x0;
+		nvmeCPL->statusField.SC = SC_INVALID_FIELD_IN_COMMAND;
+		nvmeCPL->statusField.SCT = SCT_GENERIC_COMMAND_STATUS;
+		return;
+	}
 
 	Xil_DCacheFlushRange((UINTPTR)pIdentifyBase, 0x1000);
 	// identifyWords = (volatile unsigned int *)pIdentifyBase;
@@ -588,7 +601,12 @@ void handle_nvme_admin_cmd(NVME_COMMAND *nvmeCmd)
 		}
 		case ADMIN_ABORT:
 		{
-			nvmeCPL.dword[0] = 0;
+			unsigned int abortSqId;
+			unsigned int abortCmdId;
+
+			abortSqId = nvmeAdminCmd->dword10 & 0xFFFFU;
+			abortCmdId = (nvmeAdminCmd->dword10 >> 16) & 0xFFFFU;
+			nvmeCPL.dword[0] = ssd_model_abort(abortSqId, abortCmdId);
 			nvmeCPL.specific = 0x0;
 			break;
 		}

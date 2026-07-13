@@ -86,7 +86,7 @@ static void complete_io_internal_error(unsigned int cmdSlotTag)
 	set_auto_nvme_cpl(cmdSlotTag, nvmeCPL.specific, nvmeCPL.statusFieldWord);
 }
 
-static void handle_nvme_io_read_model(unsigned int cmdSlotTag, const unsigned int *cmdDword)
+static void handle_nvme_io_read_model(const NVME_COMMAND *nvmeCmd, const unsigned int *cmdDword)
 {
 	unsigned int requestedNvmeBlock;
 	unsigned long long devAddr;
@@ -94,11 +94,13 @@ static void handle_nvme_io_read_model(unsigned int cmdSlotTag, const unsigned in
 	requestedNvmeBlock = get_io_cmd_nlb(cmdDword) + 1;
 	devAddr = get_io_cmd_dev_addr(cmdDword);
 
-	if(ssd_model_submit_read(cmdSlotTag, devAddr, requestedNvmeBlock) == 0)
-		complete_io_internal_error(cmdSlotTag);
+	if(ssd_model_submit_read(nvmeCmd->cmdSlotTag, nvmeCmd->qID,
+					  (cmdDword[0] >> 16) & 0xFFFFU,
+					  devAddr, requestedNvmeBlock) == 0)
+		complete_io_internal_error(nvmeCmd->cmdSlotTag);
 }
 
-static void handle_nvme_io_write_model(unsigned int cmdSlotTag, const unsigned int *cmdDword)
+static void handle_nvme_io_write_model(const NVME_COMMAND *nvmeCmd, const unsigned int *cmdDword)
 {
 	unsigned int requestedNvmeBlock;
 	unsigned long long devAddr;
@@ -106,8 +108,10 @@ static void handle_nvme_io_write_model(unsigned int cmdSlotTag, const unsigned i
 	requestedNvmeBlock = get_io_cmd_nlb(cmdDword) + 1;
 	devAddr = get_io_cmd_dev_addr(cmdDword);
 
-	if(ssd_model_submit_write(cmdSlotTag, devAddr, requestedNvmeBlock) == 0)
-		complete_io_internal_error(cmdSlotTag);
+	if(ssd_model_submit_write(nvmeCmd->cmdSlotTag, nvmeCmd->qID,
+					   (cmdDword[0] >> 16) & 0xFFFFU,
+					   devAddr, requestedNvmeBlock) == 0)
+		complete_io_internal_error(nvmeCmd->cmdSlotTag);
 }
 
 void handle_nvme_io_cmd(NVME_COMMAND *nvmeCmd)
@@ -123,20 +127,21 @@ void handle_nvme_io_cmd(NVME_COMMAND *nvmeCmd)
 		case IO_NVM_FLUSH:
 		{
 			PRINT("IO Flush Command\r\n");
-			if(ssd_model_submit_flush(nvmeCmd->cmdSlotTag) == 0)
+			if(ssd_model_submit_flush(nvmeCmd->cmdSlotTag, nvmeCmd->qID,
+						   (cmdDword[0] >> 16) & 0xFFFFU) == 0)
 				complete_io_internal_error(nvmeCmd->cmdSlotTag);
 			break;
 		}
 		case IO_NVM_WRITE:
 		{
 			PRINT("IO Write Command\r\n");
-			handle_nvme_io_write_model(nvmeCmd->cmdSlotTag, cmdDword);
+			handle_nvme_io_write_model(nvmeCmd, cmdDword);
 			break;
 		}
 		case IO_NVM_READ:
 		{
 			PRINT("IO Read Command\r\n");
-			handle_nvme_io_read_model(nvmeCmd->cmdSlotTag, cmdDword);
+			handle_nvme_io_read_model(nvmeCmd, cmdDword);
 			break;
 		}
 		default:

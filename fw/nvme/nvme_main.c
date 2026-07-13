@@ -102,6 +102,7 @@ void nvme_main()
 			{
 				set_nvme_admin_queue(1, 1, 1);
 				set_nvme_csts_rdy(1);
+				nvme_smp_enable_io();
 				g_nvmeTask.status = NVME_TASK_RUNNING;
 				xil_printf("\r\nNVMe ready!!!\r\n");
 			}
@@ -111,8 +112,7 @@ void nvme_main()
 			NVME_COMMAND nvmeCmd;
 			unsigned int cmdValid;
 
-			if(ssd_model_core0_should_poll())
-				ssd_model_poll();
+			ssd_model_poll();
 
 			cmdValid = get_nvme_cmd(&nvmeCmd.qID, &nvmeCmd.cmdSlotTag, &nvmeCmd.cmdSeqNum, nvmeCmd.cmdDword);
 
@@ -146,6 +146,8 @@ void nvme_main()
 
 				set_nvme_admin_queue(0, 0, 0);
 				g_nvmeTask.cacheEn = 0;
+				nvme_smp_disable_io();
+				nvme_smp_reset_queues();
 				ssd_model_reset();
 				reset_host_dma_credit();
 				set_nvme_csts_shst(2);
@@ -163,6 +165,8 @@ void nvme_main()
                 unsigned int qID;
 
 				g_nvmeTask.cacheEn = 0;
+				nvme_smp_disable_io();
+				nvme_smp_reset_queues();
 				ssd_model_reset();
 				reset_host_dma_credit();
 				set_nvme_csts_shst(0);
@@ -198,6 +202,8 @@ void nvme_main()
 				rstCnt++;
 
 			g_nvmeTask.cacheEn = 0;
+			nvme_smp_disable_io();
+			nvme_smp_reset_queues();
 			ssd_model_reset();
 			reset_host_dma_credit();
 			set_nvme_admin_queue(0, 0, 0);

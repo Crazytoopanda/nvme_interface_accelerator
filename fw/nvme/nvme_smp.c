@@ -31,6 +31,7 @@ static volatile unsigned int g_nvmeUartLockDepth;
 static volatile unsigned int g_nvmeIoSubmitLock;
 static NVME_SMP_CMD_QUEUE g_nvmeSmpQueue[NVME_SMP_NUM_CORES];
 unsigned long g_nvmeSmpWorkerStack[NVME_SMP_NUM_CORES][2048] __attribute__((aligned(64), used));
+volatile unsigned int g_nvmeSmpWorkerDebug[NVME_SMP_NUM_CORES];
 
 static void nvme_smp_barrier(void)
 {
@@ -176,7 +177,12 @@ static unsigned int nvme_smp_dequeue(unsigned int coreId, NVME_COMMAND *nvmeCmd)
 
 static unsigned int nvme_smp_map_qid_to_core(unsigned int qID)
 {
+#if SSD_MODEL_POLL_CORE != 0
+	(void)qID;
+	return SSD_MODEL_POLL_CORE;
+#else
 	return (qID - 1) % NVME_SMP_NUM_CORES;
+#endif
 }
 
 void nvme_smp_init(void)
@@ -223,8 +229,14 @@ void nvme_smp_dispatch_io_cmd(NVME_COMMAND *nvmeCmd)
 {
 	unsigned int coreId;
 
-	if(nvmeCmd->qID == 0 || g_nvmeSmpIoEnabled == 0)
+	if(nvmeCmd->qID == 0)
 		return;
+
+	if(g_nvmeSmpIoEnabled == 0)
+	{
+		handle_nvme_io_cmd(nvmeCmd);
+		return;
+	}
 
 	coreId = nvme_smp_map_qid_to_core(nvmeCmd->qID);
 
@@ -240,7 +252,10 @@ void nvme_smp_dispatch_io_cmd(NVME_COMMAND *nvmeCmd)
 	while(nvme_smp_enqueue(coreId, nvmeCmd) == 0)
 	{
 		if(g_nvmeSmpIoEnabled == 0)
+		{
+			handle_nvme_io_cmd(nvmeCmd);
 			return;
+		}
 
 		if(coreId == 0)
 			nvme_smp_poll_core(0);
@@ -268,8 +283,9 @@ unsigned int nvme_smp_poll_core(unsigned int coreId)
 
 void nvme_smp_start_worker(unsigned int coreId)
 {
-	(void)coreId;
 #if defined(__aarch64__)
+	register unsigned long coreReg __asm__("x0") = coreId;
+
 	__asm__ volatile(
 		"cmp x0, #3\n"
 		"b.ls 1f\n"
@@ -284,9 +300,9 @@ void nvme_smp_start_worker(unsigned int coreId)
 		"msr daifset, #0xf\n"
 		"mov sp, x1\n"
 		"b nvme_smp_worker_entry\n"
+		: "+r"(coreReg)
 		:
-		:
-		: "x0", "x1", "x2", "memory");
+		: "x1", "x2", "memory");
 #else
 	__asm__ volatile(
 		"cmp r0, #3\n"
@@ -313,30 +329,52 @@ void nvme_smp_worker_loop(unsigned int coreId)
 	if(coreId >= NVME_SMP_NUM_CORES)
 		coreId = 0;
 
+	g_nvmeSmpWorkerDebug[coreId] = 0x10;
+
 	while(g_nvmeSmpReady == 0)
 	{
 	}
 
+	g_nvmeSmpWorkerDebug[coreId] = 0x20;
 	g_nvmeSmpQueue[coreId].active = 1;
+	g_nvmeSmpWorkerDebug[coreId] = 0x30;
 
-#if SSD_MODEL_POLL_CORE != 0
-	if(coreId == SSD_MODEL_POLL_CORE)
+#if SSD_MODEL_CORE != NVME_HOST_CORE
+	if(coreId == SSD_MODEL_CORE)
 	{
+		g_nvmeSmpWorkerDebug[coreId] = 0x40;
 		ssd_model_set_worker_active(1);
-		nvme_uart_lock();
-		xil_printf("[SMP] core%u SSD model worker active\r\n", coreId);
-		nvme_uart_unlock();
+		g_nvmeSmpWorkerDebug[coreId] = 0x50;
+	}
+#endif
+
+#if NVME_DMA_CORE != NVME_HOST_CORE
+	if(coreId == NVME_DMA_CORE)
+	{
+		g_nvmeSmpWorkerDebug[coreId] = 0x44;
+		ssd_model_set_dma_active(1);
+		g_nvmeSmpWorkerDebug[coreId] = 0x54;
 	}
 #endif
 
 	while(1)
 	{
+#if SSD_MODEL_CORE != NVME_HOST_CORE
+		if(coreId == SSD_MODEL_CORE)
+		{
+			g_nvmeSmpWorkerDebug[coreId] = 0x60;
+			ssd_model_worker_heartbeat();
+		}
+#endif
+
 		if(g_nvmeTask.status == NVME_TASK_RUNNING)
 		{
-#if SSD_MODEL_POLL_CORE != 0
-			if(coreId == SSD_MODEL_POLL_CORE)
+			if(coreId == SSD_MODEL_CORE || coreId == NVME_DMA_CORE)
+			{
+				g_nvmeSmpWorkerDebug[coreId] = 0x70;
 				ssd_model_poll();
-#endif
+			}
+
 			nvme_smp_poll_core(coreId);
 		}
 	}

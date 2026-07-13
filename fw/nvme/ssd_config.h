@@ -78,11 +78,53 @@
 #endif
 
 /*
- * 0: core0 submits commands and polls SSD model.
- * 1: a secondary A53 worker may poll SSD model; core0 falls back until the
- *    worker marks itself active.
+ * A single ELF runs on all A53 cores. Role macros map work to cores.
+ * With one core, every role maps to core0 and the firmware completes IO
+ * end-to-end without cross-core queues. With three cores, core0 fetches NVMe
+ * commands, core1 runs the SSD timing model, and core2 owns IO DMA/CPL.
  */
-#define SSD_MODEL_POLL_CORE (0)
+#ifndef NVME_SMP_NUM_CORES
+#define NVME_SMP_NUM_CORES 3
+#endif
+
+#ifndef NVME_HOST_CORE
+#define NVME_HOST_CORE 0
+#endif
+
+#ifndef SSD_MODEL_CORE
+#if NVME_SMP_NUM_CORES > 1
+#define SSD_MODEL_CORE 1
+#else
+#define SSD_MODEL_CORE 0
+#endif
+#endif
+
+#ifndef NVME_DMA_CORE
+#if NVME_SMP_NUM_CORES > 2
+#define NVME_DMA_CORE 2
+#else
+#define NVME_DMA_CORE 0
+#endif
+#endif
+
+#ifndef NVME_CPL_CORE
+#define NVME_CPL_CORE NVME_DMA_CORE
+#endif
+
+#define SSD_MODEL_POLL_CORE SSD_MODEL_CORE
+
+#if NVME_HOST_CORE >= NVME_SMP_NUM_CORES
+#error "NVME_HOST_CORE must be less than NVME_SMP_NUM_CORES"
+#endif
+#if SSD_MODEL_CORE >= NVME_SMP_NUM_CORES
+#error "SSD_MODEL_CORE must be less than NVME_SMP_NUM_CORES"
+#endif
+#if NVME_DMA_CORE >= NVME_SMP_NUM_CORES
+#error "NVME_DMA_CORE must be less than NVME_SMP_NUM_CORES"
+#endif
+#if NVME_CPL_CORE != NVME_DMA_CORE
+#error "Separate CPL core is not implemented yet; set NVME_CPL_CORE to NVME_DMA_CORE"
+#endif
 
 #define LBA_BITS (9)
 #define LBA_SIZE (1 << LBA_BITS)
