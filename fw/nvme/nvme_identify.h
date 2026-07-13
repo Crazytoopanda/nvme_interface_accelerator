@@ -51,9 +51,9 @@
 
 #define PCI_VENDOR_ID				0x1EDC
 #define PCI_SUBSYSTEM_VENDOR_ID		0x1EDC
-#define SERIAL_NUMBER				"SSDD515T"
-#define MODEL_NUMBER				"DaisyPlus OpenSSD"
-#define FIRMWARE_REVISION			"TYPE0006"
+#define SERIAL_NUMBER				"S970SIM0001"
+#define MODEL_NUMBER				"Samsung SSD 970 PRO"
+#define FIRMWARE_REVISION			"SIM9701"
 
 void controller_identification(unsigned long long pBuffer);
 

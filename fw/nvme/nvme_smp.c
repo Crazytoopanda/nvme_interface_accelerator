@@ -10,6 +10,8 @@
 #include "nvme.h"
 #include "nvme_io_cmd.h"
 #include "nvme_smp.h"
+#include "ssd_config.h"
+#include "ssd_model.h"
 
 extern volatile NVME_CONTEXT g_nvmeTask;
 
@@ -266,6 +268,7 @@ unsigned int nvme_smp_poll_core(unsigned int coreId)
 
 void nvme_smp_start_worker(unsigned int coreId)
 {
+	(void)coreId;
 #if defined(__aarch64__)
 	__asm__ volatile(
 		"cmp x0, #3\n"
@@ -316,9 +319,25 @@ void nvme_smp_worker_loop(unsigned int coreId)
 
 	g_nvmeSmpQueue[coreId].active = 1;
 
+#if SSD_MODEL_POLL_CORE != 0
+	if(coreId == SSD_MODEL_POLL_CORE)
+	{
+		ssd_model_set_worker_active(1);
+		nvme_uart_lock();
+		xil_printf("[SMP] core%u SSD model worker active\r\n", coreId);
+		nvme_uart_unlock();
+	}
+#endif
+
 	while(1)
 	{
 		if(g_nvmeTask.status == NVME_TASK_RUNNING)
+		{
+#if SSD_MODEL_POLL_CORE != 0
+			if(coreId == SSD_MODEL_POLL_CORE)
+				ssd_model_poll();
+#endif
 			nvme_smp_poll_core(coreId);
+		}
 	}
 }

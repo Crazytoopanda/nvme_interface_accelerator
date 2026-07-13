@@ -67,6 +67,10 @@
 #include "nvme_main.h"
 #include "nvme_admin_cmd.h"
 #include "nvme_io_cmd.h"
+#include "ssd_model.h"
+#include "ssd_config.h"
+#include "nvme_smp.h"
+#include "nvme_smp_boot.h"
 
 #include "../memory_map.h"
 
@@ -75,9 +79,14 @@ volatile NVME_CONTEXT g_nvmeTask;
 void nvme_main()
 {
 	unsigned int rstCnt = 0;
-	unsigned char *p_storage = (unsigned char *)DATA_BUFFER_BASE_ADDR;
 
-	memset(p_storage, 0xFF, NVME_STORAGE_ERASING);
+#if NVME_BOOT_ERASE_BYTES != 0
+	unsigned char *p_storage = (unsigned char *)DATA_BUFFER_BASE_ADDR;
+	memset(p_storage, 0xFF, NVME_BOOT_ERASE_BYTES);
+#endif
+	nvme_smp_init();
+	ssd_model_init();
+	nvme_smp_boot_configured_worker();
 
 	xil_printf("[ storage capacity %d MB ]\r\n", (unsigned int)(NVME_STORAGE / (1024ULL * 1024ULL)));
 
@@ -101,6 +110,9 @@ void nvme_main()
 		{
 			NVME_COMMAND nvmeCmd;
 			unsigned int cmdValid;
+
+			if(ssd_model_core0_should_poll())
+				ssd_model_poll();
 
 			cmdValid = get_nvme_cmd(&nvmeCmd.qID, &nvmeCmd.cmdSlotTag, &nvmeCmd.cmdSeqNum, nvmeCmd.cmdDword);
 
@@ -134,6 +146,7 @@ void nvme_main()
 
 				set_nvme_admin_queue(0, 0, 0);
 				g_nvmeTask.cacheEn = 0;
+				ssd_model_reset();
 				reset_host_dma_credit();
 				set_nvme_csts_shst(2);
 				g_nvmeTask.status = NVME_TASK_WAIT_RESET;
@@ -150,6 +163,7 @@ void nvme_main()
                 unsigned int qID;
 
 				g_nvmeTask.cacheEn = 0;
+				ssd_model_reset();
 				reset_host_dma_credit();
 				set_nvme_csts_shst(0);
 				set_nvme_csts_rdy(0);
@@ -184,6 +198,7 @@ void nvme_main()
 				rstCnt++;
 
 			g_nvmeTask.cacheEn = 0;
+			ssd_model_reset();
 			reset_host_dma_credit();
 			set_nvme_admin_queue(0, 0, 0);
 			set_nvme_csts_shst(0);

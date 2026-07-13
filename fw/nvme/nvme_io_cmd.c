@@ -57,6 +57,7 @@
 #include "nvme.h"
 #include "host_lld.h"
 #include "nvme_io_cmd.h"
+#include "ssd_model.h"
 #include "../memory_map.h"
 
 static inline unsigned long long get_io_cmd_dev_addr(const unsigned int *cmdDword)
@@ -72,53 +73,45 @@ static inline unsigned int get_io_cmd_nlb(const unsigned int *cmdDword)
 	return cmdDword[12] & 0xFFFFU;
 }
 
-static void handle_nvme_io_read_fast(unsigned int cmdSlotTag, const unsigned int *cmdDword)
+static void complete_io_internal_error(unsigned int cmdSlotTag)
 {
-	unsigned int requestedNvmeBlock;
-	unsigned int dmaIndex;
-	unsigned long long devAddr;
+	NVME_COMPLETION nvmeCPL;
 
-	requestedNvmeBlock = get_io_cmd_nlb(cmdDword) + 1;
-	devAddr = get_io_cmd_dev_addr(cmdDword);
+	nvmeCPL.dword[0] = 0;
+	nvmeCPL.specific = 0x0;
+	nvmeCPL.statusField.SC = SC_INTERNAL_DEVICE_ERROR;
+	nvmeCPL.statusField.SCT = SCT_GENERIC_COMMAND_STATUS;
+	nvmeCPL.statusField.DNR = 1;
 
-	if(requestedNvmeBlock == 1)
-	{
-		set_auto_tx_dma(cmdSlotTag, 0, devAddr, NVME_COMMAND_AUTO_COMPLETION_ON);
-		return;
-	}
-
-	for(dmaIndex = 0; dmaIndex < requestedNvmeBlock; dmaIndex++)
-	{
-		set_auto_tx_dma(cmdSlotTag, dmaIndex, devAddr, NVME_COMMAND_AUTO_COMPLETION_ON);
-		devAddr += BYTES_PER_NVME_BLOCK;
-	}
+	set_auto_nvme_cpl(cmdSlotTag, nvmeCPL.specific, nvmeCPL.statusFieldWord);
 }
 
-static void handle_nvme_io_write_fast(unsigned int cmdSlotTag, const unsigned int *cmdDword)
+static void handle_nvme_io_read_model(unsigned int cmdSlotTag, const unsigned int *cmdDword)
 {
 	unsigned int requestedNvmeBlock;
-	unsigned int dmaIndex;
 	unsigned long long devAddr;
 
 	requestedNvmeBlock = get_io_cmd_nlb(cmdDword) + 1;
 	devAddr = get_io_cmd_dev_addr(cmdDword);
 
-	if(requestedNvmeBlock == 1)
-	{
-		set_auto_rx_dma(cmdSlotTag, 0, devAddr, NVME_COMMAND_AUTO_COMPLETION_ON);
-		return;
-	}
+	if(ssd_model_submit_read(cmdSlotTag, devAddr, requestedNvmeBlock) == 0)
+		complete_io_internal_error(cmdSlotTag);
+}
 
-	for(dmaIndex = 0; dmaIndex < requestedNvmeBlock; dmaIndex++)
-	{
-		set_auto_rx_dma(cmdSlotTag, dmaIndex, devAddr, NVME_COMMAND_AUTO_COMPLETION_ON);
-		devAddr += BYTES_PER_NVME_BLOCK;
-	}
+static void handle_nvme_io_write_model(unsigned int cmdSlotTag, const unsigned int *cmdDword)
+{
+	unsigned int requestedNvmeBlock;
+	unsigned long long devAddr;
+
+	requestedNvmeBlock = get_io_cmd_nlb(cmdDword) + 1;
+	devAddr = get_io_cmd_dev_addr(cmdDword);
+
+	if(ssd_model_submit_write(cmdSlotTag, devAddr, requestedNvmeBlock) == 0)
+		complete_io_internal_error(cmdSlotTag);
 }
 
 void handle_nvme_io_cmd(NVME_COMMAND *nvmeCmd)
 {
-	NVME_COMPLETION nvmeCPL;
 	unsigned int *cmdDword;
 	unsigned int opc;
 
@@ -130,21 +123,20 @@ void handle_nvme_io_cmd(NVME_COMMAND *nvmeCmd)
 		case IO_NVM_FLUSH:
 		{
 			PRINT("IO Flush Command\r\n");
-			nvmeCPL.dword[0] = 0;
-			nvmeCPL.specific = 0x0;
-			set_auto_nvme_cpl(nvmeCmd->cmdSlotTag, nvmeCPL.specific, nvmeCPL.statusFieldWord);
+			if(ssd_model_submit_flush(nvmeCmd->cmdSlotTag) == 0)
+				complete_io_internal_error(nvmeCmd->cmdSlotTag);
 			break;
 		}
 		case IO_NVM_WRITE:
 		{
 			PRINT("IO Write Command\r\n");
-			handle_nvme_io_write_fast(nvmeCmd->cmdSlotTag, cmdDword);
+			handle_nvme_io_write_model(nvmeCmd->cmdSlotTag, cmdDword);
 			break;
 		}
 		case IO_NVM_READ:
 		{
 			PRINT("IO Read Command\r\n");
-			handle_nvme_io_read_fast(nvmeCmd->cmdSlotTag, cmdDword);
+			handle_nvme_io_read_model(nvmeCmd->cmdSlotTag, cmdDword);
 			break;
 		}
 		default:

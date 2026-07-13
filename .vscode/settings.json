@@ -1,6 +1,7 @@
 {
     "conventionalCommits.scopes": [
         "hw",
-        "fw"
+        "fw",
+        "nvmevirt"
     ]
 }

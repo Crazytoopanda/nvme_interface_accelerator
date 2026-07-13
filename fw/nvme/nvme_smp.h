@@ -8,7 +8,7 @@
 
 #include "nvme.h"
 
-#define NVME_SMP_NUM_CORES			4
+#define NVME_SMP_NUM_CORES			1
 #define NVME_SMP_CMD_QUEUE_DEPTH	32
 
 unsigned int nvme_smp_get_core_id(void);

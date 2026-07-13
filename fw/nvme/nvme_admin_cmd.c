@@ -361,12 +361,8 @@ void handle_identify(NVME_ADMIN_COMMAND *nvmeAdminCmd, NVME_COMPLETION *nvmeCPL)
 {
 	ADMIN_IDENTIFY_COMMAND_DW10 identifyInfo;
 	unsigned long long pIdentifyData = NVME_MANAGEMENT_START_ADDR;
-	unsigned long long pIdentifyBase = pIdentifyData;
-	volatile unsigned int *identifyWords;
-	unsigned int prp[2];
+	unsigned long long pIdentifyBase = pIdentifyData;	unsigned int prp[2];
 	unsigned int prpLen;
-	unsigned int idx;
-
 	identifyInfo.dword = nvmeAdminCmd->dword10;
 
 	if(identifyInfo.CNS == 1)//CI: Controller Identify
@@ -376,6 +372,13 @@ void handle_identify(NVME_ADMIN_COMMAND *nvmeAdminCmd, NVME_COMPLETION *nvmeCPL)
 
 		ASSERT((nvmeAdminCmd->PRP1[0] & 0x3) == 0 && (nvmeAdminCmd->PRP2[0] & 0x3) == 0);
 		controller_identification(pIdentifyData);
+	}
+	else if(identifyInfo.CNS == 2)//Active Namespace ID list
+	{
+		unsigned int *namespaceList = (unsigned int *)pIdentifyData;
+
+		memset(namespaceList, 0, 0x1000);
+		namespaceList[0] = 1;
 	}
 	else if(identifyInfo.CNS == 0)//NI: Namespace Identify
 	{

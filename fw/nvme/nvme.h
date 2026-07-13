@@ -433,8 +433,8 @@ typedef struct _ADMIN_IDENTIFY_COMMAND_DW10
 	union {
 		unsigned int dword;
 		struct {
-			unsigned int CNS			:1;
-			unsigned int reserved0		:31;
+			unsigned int CNS			:8;
+			unsigned int reserved0		:24;
 		};
 	};
 } ADMIN_IDENTIFY_COMMAND_DW10;
