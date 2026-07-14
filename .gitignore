@@ -7,3 +7,4 @@
 **/xvlog.*
 **/vivado*
 **/xil_ip_pack_*
+**/*.vcd 
