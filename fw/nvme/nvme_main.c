@@ -133,29 +133,25 @@ void nvme_main()
 		}
 		else if(g_nvmeTask.status == NVME_TASK_SHUTDOWN)
 		{
-			NVME_STATUS_REG nvmeReg;
-			nvmeReg.dword = IO_READ32(NVME_STATUS_REG_ADDR);
-			if(nvmeReg.ccShn != 0)
+			unsigned int qID;
+
+			set_nvme_csts_shst(1);
+
+			for(qID = 0; qID < 8; qID++)
 			{
-				unsigned int qID;
-				set_nvme_csts_shst(1);
-
-				for(qID = 0; qID < 8; qID++)
-				{
-					set_io_cq(qID, 0, 0, 0, 0, 0, 0);
-					set_io_sq(qID, 0, 0, 0, 0, 0);
-				}
-
-				set_nvme_admin_queue(0, 0, 0);
-				g_nvmeTask.cacheEn = 0;
-				nvme_smp_disable_io();
-				nvme_smp_reset_queues();
-				reset_host_dma_credit();
-				set_nvme_csts_shst(2);
-				g_nvmeTask.status = NVME_TASK_WAIT_RESET;
-
-				xil_printf("\r\nNVMe shutdown!!!\r\n");
+				set_io_cq(qID, 0, 0, 0, 0, 0, 0);
+				set_io_sq(qID, 0, 0, 0, 0, 0);
 			}
+
+			set_nvme_admin_queue(0, 0, 0);
+			g_nvmeTask.cacheEn = 0;
+			nvme_smp_disable_io();
+			nvme_smp_reset_queues();
+			reset_host_dma_credit();
+			set_nvme_csts_shst(2);
+			g_nvmeTask.status = NVME_TASK_WAIT_RESET;
+
+			xil_printf("\r\nNVMe shutdown!!!\r\n");
 		}
 		else if(g_nvmeTask.status == NVME_TASK_WAIT_RESET)
 		{
