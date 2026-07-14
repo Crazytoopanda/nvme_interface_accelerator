@@ -214,6 +214,7 @@ wire	[31:0]								w_pcie_head3;
     
     wire	[8:0]								w_sq_rst_n;
     wire	[8:0]								w_cq_rst_n;
+	wire	[C_PCIE_ADDR_WIDTH-33:0]				w_mreq_addr_high_field;
 
 	reg		[C_PCIE_DATA_WIDTH-1:0]				r_mreq_fifo_rd_data;
 
@@ -248,6 +249,9 @@ assign tx_cpld_at = r_mreq_head_at;             // Address Translation
 assign tx_cpld_be = req_be;
 
 assign mreq_fifo_rd_en = r_mreq_fifo_rd_en;
+assign w_mreq_addr_high_field = r_mreq_addr[2] ?
+								r_mreq_data[C_PCIE_ADDR_WIDTH-33:0] :
+								r_mreq_data[C_PCIE_ADDR_WIDTH-1:32];
 
 assign admin_sq_bs_addr = r_asq_asqb;
 assign admin_cq_bs_addr = r_acq_acqb;
@@ -467,8 +471,8 @@ begin
 					4'h2: {r_cc_iocqes, r_cc_iosqes, r_cc_shn, r_cc_asm, r_cc_mps, r_cc_ccs, r_cc_en}
 							 <= {r_mreq_data[23:20], r_mreq_data[19:16], r_mreq_data[15:14], r_mreq_data[13:11], r_mreq_data[10:7], r_mreq_data[6:4],  r_mreq_data[0]};
 					4'h4: {r_aqa_acqs, r_aqa_asqs} <= {r_mreq_data[23:16], r_mreq_data[7:0]};
-					4'h5: r_asq_asqb[C_PCIE_ADDR_WIDTH-1:32] <= r_mreq_data[C_PCIE_ADDR_WIDTH-1-32:0];
-					4'h6: r_acq_acqb[C_PCIE_ADDR_WIDTH-1:32] <= r_mreq_data[C_PCIE_ADDR_WIDTH-1-32:0];
+					4'h5: r_asq_asqb[C_PCIE_ADDR_WIDTH-1:32] <= w_mreq_addr_high_field;
+					4'h6: r_acq_acqb[C_PCIE_ADDR_WIDTH-1:32] <= w_mreq_addr_high_field;
 				endcase
 
 				if(r_mreq_addr[6:3] == 4'h1)

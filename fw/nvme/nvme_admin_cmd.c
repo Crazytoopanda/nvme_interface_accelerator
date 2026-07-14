@@ -60,6 +60,26 @@
 
 extern NVME_CONTEXT g_nvmeTask;
 
+static void set_admin_cpl_status(NVME_COMPLETION *nvmeCPL, unsigned int sct, unsigned int sc, unsigned int dnr)
+{
+	nvmeCPL->dword[0] = 0;
+	nvmeCPL->specific = 0x0;
+	nvmeCPL->statusFieldWord = 0;
+	nvmeCPL->statusField.SCT = sct;
+	nvmeCPL->statusField.SC = sc;
+	nvmeCPL->statusField.DNR = dnr;
+}
+
+static void set_admin_cpl_success(NVME_COMPLETION *nvmeCPL)
+{
+	set_admin_cpl_status(nvmeCPL, SCT_GENERIC_COMMAND_STATUS, SC_SUCCESSFUL_COMPLETION, 0);
+}
+
+static void set_admin_cpl_invalid_opcode(NVME_COMPLETION *nvmeCPL)
+{
+	set_admin_cpl_status(nvmeCPL, SCT_GENERIC_COMMAND_STATUS, SC_INVALID_COMMAND_OPCODE, 1);
+}
+
 unsigned int set_num_of_queue(unsigned int dword11)
 {
 	ADMIN_SET_FEATURES_NUMBER_OF_QUEUES_DW11 requested;
@@ -583,20 +603,41 @@ void handle_nvme_admin_cmd(NVME_COMMAND *nvmeCmd)
 			handle_get_log_page(nvmeAdminCmd, &nvmeCPL);
 			break;
 		}
-		case ADMIN_SECURITY_RECEIVE:
+		case ADMIN_KEEP_ALIVE:
 		{
-			needCpl = 0;
-			needSlotRelease = 0;
-			nvmeCPL.dword[0] = 0;
-			nvmeCPL.specific = 0x0;
+			set_admin_cpl_success(&nvmeCPL);
 			break;
 		}
-		case ADMIN_DOORBELL_BUFFER_CONFIG:
+		case ADMIN_FORMAT_NVM:
 		{
-			needCpl = 0;
-			needSlotRelease = 0;
-			nvmeCPL.dword[0] = 0;
-			nvmeCPL.specific = 0x0;
+			ssd_model_reset();
+			set_admin_cpl_success(&nvmeCPL);
+			break;
+		}
+		case ADMIN_SECURITY_SEND:
+		case ADMIN_SECURITY_RECEIVE:
+		case ADMIN_DOORBELL_BUFFER_CONFIG:
+		case ADMIN_FIRMWARE_ACTIVATE:
+		case ADMIN_FIRMWARE_IMAGE_DOWNLOAD:
+		case ADMIN_DEVICE_SELF_TEST:
+		case ADMIN_NAMESPACE_MANAGEMENT:
+		case ADMIN_NAMESPACE_ATTACHMENT:
+		case ADMIN_DIRECTIVE_SEND:
+		case ADMIN_DIRECTIVE_RECEIVE:
+		case ADMIN_VIRTUALIZATION_MANAGEMENT:
+		case ADMIN_NVME_MI_SEND:
+		case ADMIN_NVME_MI_RECEIVE:
+		case ADMIN_CAPACITY_MANAGEMENT:
+		case ADMIN_LOCKDOWN:
+		case ADMIN_SANITIZE:
+		case ADMIN_GET_LBA_STATUS:
+		{
+			set_admin_cpl_invalid_opcode(&nvmeCPL);
+			break;
+		}
+		case ADMIN_VENDOR_LIBNVM:
+		{
+			set_admin_cpl_success(&nvmeCPL);
 			break;
 		}
 		case ADMIN_ABORT:
@@ -613,11 +654,7 @@ void handle_nvme_admin_cmd(NVME_COMMAND *nvmeCmd)
 		default:
 		{
 			xil_printf("Not Support Admin Command OPC: 0x%X\r\n", opc);
-			nvmeCPL.statusFieldWord = 0;
-			nvmeCPL.specific = 0x0;
-			nvmeCPL.statusField.DNR = 1;
-			nvmeCPL.statusField.SCT = 0;
-			nvmeCPL.statusField.SC = 1;
+			set_admin_cpl_invalid_opcode(&nvmeCPL);
 			break;
 		}
 	}
