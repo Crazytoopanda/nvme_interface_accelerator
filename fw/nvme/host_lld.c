@@ -59,8 +59,8 @@
 
 #include "nvme.h"
 #include "host_lld.h"
-
 extern volatile NVME_CONTEXT g_nvmeTask;
+extern volatile unsigned int g_nvmeWaitCcObservedDisabled;
 HOST_DMA_STATUS g_hostDmaStatus;
 HOST_DMA_ASSIST_STATUS g_hostDmaAssistStatus;
 
@@ -105,16 +105,28 @@ static void refresh_auto_rx_dma_credit(void)
 										  g_hostDmaStatus.fifoTail.autoDmaRx);
 }
 
-static void wait_auto_tx_dma_credit(void)
+static unsigned int wait_auto_tx_dma_credit(void)
 {
 	while(g_autoDmaTxCredit == 0)
+	{
+		if(g_nvmeTask.status != NVME_TASK_RUNNING)
+			return 0;
 		refresh_auto_tx_dma_credit();
+	}
+
+	return 1;
 }
 
-static void wait_auto_rx_dma_credit(void)
+static unsigned int wait_auto_rx_dma_credit(void)
 {
 	while(g_autoDmaRxCredit == 0)
+	{
+		if(g_nvmeTask.status != NVME_TASK_RUNNING)
+			return 0;
 		refresh_auto_rx_dma_credit();
+	}
+
+	return 1;
 }
 
 void reset_host_dma_credit(void)
@@ -122,6 +134,7 @@ void reset_host_dma_credit(void)
 	g_autoDmaTxCredit = 0;
 	g_autoDmaRxCredit = 0;
 }
+
 
 static void read_nvme_sqe(unsigned int cmdSlotTag, unsigned int *cmdDword)
 {
@@ -138,18 +151,20 @@ void dev_irq_init()
 
 	reset_host_dma_credit();
 
+	IO_WRITE32(DEV_IRQ_CLEAR_REG_ADDR, 0xFFFFFFFFU);
+
 	devReg.dword = 0;
 	devReg.pcieLink = 1;
-	devReg.busMaster = 1;
-	devReg.pcieIrq = 1;
-	devReg.pcieMsi = 1;
-	devReg.pcieMsix = 1;
+	devReg.busMaster = 0;
+	devReg.pcieIrq = 0;
+	devReg.pcieMsi = 0;
+	devReg.pcieMsix = 0;
 	devReg.nvmeCcEn = 1;
 	devReg.nvmeCcShn = 1;
-	devReg.mAxiWriteErr = 1;
-	devReg.pcieMreqErr = 1;
-	devReg.pcieCpldErr = 1;
-	devReg.pcieCpldLenErr = 1;
+	devReg.mAxiWriteErr = 0;
+	devReg.pcieMreqErr = 0;
+	devReg.pcieCpldErr = 0;
+	devReg.pcieCpldLenErr = 0;
 
 	IO_WRITE32(DEV_IRQ_MASK_REG_ADDR, devReg.dword);
 }
@@ -172,44 +187,21 @@ void dev_irq_handler()
 			g_nvmeTask.status = NVME_TASK_RESET;
 	}
 
-	if(devReg.busMaster == 1)
-	{
-		PCIE_FUNC_REG pcieReg;
-		pcieReg.dword = IO_READ32(PCIE_FUNC_REG_ADDR);
-		xil_printf("PCIe Bus Master: %d\r\n", pcieReg.busMaster);
-	}
-
-	if(devReg.pcieIrq == 1)
-	{
-		PCIE_FUNC_REG pcieReg;
-		pcieReg.dword = IO_READ32(PCIE_FUNC_REG_ADDR);
-		xil_printf("PCIe IRQ Disable: %d\r\n", pcieReg.irqDisable);
-	}
-
-	if(devReg.pcieMsi == 1)
-	{
-		PCIE_FUNC_REG pcieReg;
-		pcieReg.dword = IO_READ32(PCIE_FUNC_REG_ADDR);
-		xil_printf("PCIe MSI Enable: %d, 0x%x\r\n", pcieReg.msiEnable, pcieReg.msiVecNum);
-	}
-
-	if(devReg.pcieMsix == 1)
-	{
-		PCIE_FUNC_REG pcieReg;
-		pcieReg.dword = IO_READ32(PCIE_FUNC_REG_ADDR);
-		xil_printf("PCIe MSI-X Enable: %d\r\n", pcieReg.msixEnable);
-	}
-
 	if(devReg.nvmeCcEn == 1)
 	{
 		NVME_STATUS_REG nvmeReg;
 		nvmeReg.dword = IO_READ32(NVME_STATUS_REG_ADDR);
-		xil_printf("NVME CC.EN: %d\r\n", nvmeReg.ccEn);
-
 		if(nvmeReg.ccEn == 1)
-			g_nvmeTask.status = NVME_TASK_WAIT_CC_EN;
+		{
+			if(g_nvmeWaitCcObservedDisabled != 0)
+				g_nvmeTask.status = NVME_TASK_WAIT_CC_EN;
+		}
 		else
-			g_nvmeTask.status = NVME_TASK_WAIT_RESET;
+		{
+			g_nvmeWaitCcObservedDisabled = 1;
+			if(g_nvmeTask.status != NVME_TASK_IDLE)
+				g_nvmeTask.status = NVME_TASK_WAIT_RESET;
+		}
 	}
 
 	if(devReg.nvmeCcShn == 1)
@@ -217,33 +209,9 @@ void dev_irq_handler()
 		NVME_STATUS_REG nvmeReg;
 		nvmeReg.dword = IO_READ32(NVME_STATUS_REG_ADDR);
 		if(nvmeReg.ccShn != 0)
-		{
-			xil_printf("NVME CC.SHN: %d\r\n", nvmeReg.ccShn);
-			set_nvme_csts_shst(1);
-			set_nvme_csts_shst(2);
 			g_nvmeTask.status = NVME_TASK_SHUTDOWN;
-		}
 	}
 
-	if(devReg.mAxiWriteErr == 1)
-	{
-		xil_printf("mAxiWriteErr\r\n");
-	}
-
-	if(devReg.pcieMreqErr == 1)
-	{
-		xil_printf("pcieMreqErr\r\n");
-	}
-
-	if(devReg.pcieCpldErr == 1)
-	{
-		xil_printf("pcieCpldErr\r\n");
-	}
-
-	if(devReg.pcieCpldLenErr == 1)
-	{
-		xil_printf("pcieCpldLenErr\r\n");
-	}
 //	Xil_ExceptionEnable();
 }
 
@@ -491,7 +459,8 @@ void set_auto_tx_dma(unsigned int cmdSlotTag, unsigned int cmd4KBOffset, unsigne
 
 	ASSERT(cmd4KBOffset < 256);
 
-	wait_auto_tx_dma_credit();
+	if(wait_auto_tx_dma_credit() == 0)
+		return;
 
 	dmaDword3 = (HOST_DMA_TX_DIRECTION << 30) |
 			((cmd4KBOffset & 0x1FFU) << 14) |
@@ -514,7 +483,8 @@ void set_auto_rx_dma(unsigned int cmdSlotTag, unsigned int cmd4KBOffset, unsigne
 
 	ASSERT(cmd4KBOffset < 256);
 
-	wait_auto_rx_dma_credit();
+	if(wait_auto_rx_dma_credit() == 0)
+		return;
 
 	dmaDword3 = (HOST_DMA_RX_DIRECTION << 30) |
 			((cmd4KBOffset & 0x1FFU) << 14) |

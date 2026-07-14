@@ -232,6 +232,9 @@ void nvme_smp_dispatch_io_cmd(NVME_COMMAND *nvmeCmd)
 	if(nvmeCmd->qID == 0)
 		return;
 
+	if(g_nvmeTask.status != NVME_TASK_RUNNING)
+		return;
+
 	if(g_nvmeSmpIoEnabled == 0)
 	{
 		handle_nvme_io_cmd(nvmeCmd);
@@ -251,6 +254,8 @@ void nvme_smp_dispatch_io_cmd(NVME_COMMAND *nvmeCmd)
 
 	while(nvme_smp_enqueue(coreId, nvmeCmd) == 0)
 	{
+		if(g_nvmeTask.status != NVME_TASK_RUNNING)
+			return;
 		if(g_nvmeSmpIoEnabled == 0)
 		{
 			handle_nvme_io_cmd(nvmeCmd);

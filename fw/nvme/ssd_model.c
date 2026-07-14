@@ -151,6 +151,7 @@ static SSD_MODEL_WRITE_POINTER g_gcWritePointer[SSD_MODEL_PARTITIONS];
 static unsigned int g_writeCredits[SSD_MODEL_PARTITIONS];
 static unsigned int g_creditsToRefill[SSD_MODEL_PARTITIONS];
 volatile unsigned int g_ssdModelDebug[16];
+extern volatile NVME_CONTEXT g_nvmeTask;
 
 static inline unsigned long long ssd_model_now_ns(void)
 {
@@ -1264,7 +1265,8 @@ static void ssd_model_dma_poll_ready(void)
 	SSD_MODEL_IO *io;
 	unsigned int idx;
 
-	while((io = ssd_model_queue_pop(&g_ssdModelReadyQueue)) != 0)
+	while(g_nvmeTask.status == NVME_TASK_RUNNING &&
+	      (io = ssd_model_queue_pop(&g_ssdModelReadyQueue)) != 0)
 	{
 		g_ssdModelDebug[5]++;
 		if(io->valid == 0)
@@ -1273,6 +1275,9 @@ static void ssd_model_dma_poll_ready(void)
 		io->modelReady = 1;
 		ssd_model_try_complete(io);
 	}
+
+	if(g_nvmeTask.status != NVME_TASK_RUNNING)
+		return;
 
 	for(idx = 0; idx < SSD_MODEL_CMD_SLOT_COUNT; idx++)
 	{
@@ -1297,7 +1302,8 @@ static void ssd_model_worker_poll(void)
 	if(ssd_model_try_lock() == 0)
 		return;
 
-	while((io = ssd_model_queue_pop(&g_ssdModelReqQueue)) != 0)
+	while(g_nvmeTask.status == NVME_TASK_RUNNING &&
+	      (io = ssd_model_queue_pop(&g_ssdModelReqQueue)) != 0)
 	{
 		g_ssdModelDebug[3]++;
 		if(io->valid == 0)
@@ -1477,6 +1483,9 @@ static unsigned int ssd_model_wait_slot_free(SSD_MODEL_IO *io)
 		if(io->valid == 0)
 			return 1;
 
+		if(g_nvmeTask.status != NVME_TASK_RUNNING)
+			return 0;
+
 		if((spin & 0x3FFU) == 0)
 			ssd_model_poll();
 	}
@@ -1495,6 +1504,9 @@ static unsigned int ssd_model_submit(unsigned char op,
 	unsigned int useWorker;
 
 	if(cmdSlotTag >= SSD_MODEL_CMD_SLOT_COUNT)
+		return 0;
+
+	if(g_nvmeTask.status != NVME_TASK_RUNNING)
 		return 0;
 
 	useWorker = ssd_model_use_worker();

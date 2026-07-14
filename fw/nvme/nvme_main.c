@@ -75,16 +75,49 @@
 #include "../memory_map.h"
 
 volatile NVME_CONTEXT g_nvmeTask;
+volatile unsigned int g_nvmeWaitCcObservedDisabled;
+
+#define NVME_SHUTDOWN_REARM_DELAY_NS	100000000ULL
+
+static unsigned long long nvme_main_now_ns(void)
+{
+	unsigned long long cnt;
+	unsigned long long freq;
+	unsigned long long sec;
+	unsigned long long rem;
+
+	__asm__ volatile("mrs %0, cntvct_el0" : "=r"(cnt));
+	__asm__ volatile("mrs %0, cntfrq_el0" : "=r"(freq));
+	if(freq == 0)
+		return 0;
+
+	sec = cnt / freq;
+	rem = cnt % freq;
+	return (sec * 1000000000ULL) + ((rem * 1000000000ULL) / freq);
+}
+
+static void clear_nvme_status_for_rearm(void)
+{
+	NVME_STATUS_REG nvmeReg;
+
+	nvmeReg.dword = IO_READ32(NVME_STATUS_REG_ADDR);
+	nvmeReg.ccEn = 0;
+	nvmeReg.ccShn = 0;
+	nvmeReg.cstsRdy = 0;
+	nvmeReg.cstsShst = 0;
+	IO_WRITE32(NVME_STATUS_REG_ADDR, nvmeReg.dword);
+}
 
 void nvme_main()
 {
 	unsigned int rstCnt = 0;
-
+	unsigned long long waitResetStartNs = 0;
 #if NVME_BOOT_ERASE_BYTES != 0
 	unsigned char *p_storage = (unsigned char *)DATA_BUFFER_BASE_ADDR;
 	memset(p_storage, 0xFF, NVME_BOOT_ERASE_BYTES);
 #endif
 	nvme_smp_init();
+	g_nvmeWaitCcObservedDisabled = 1;
 	ssd_model_init();
 	nvme_smp_boot_configured_worker();
 
@@ -94,12 +127,30 @@ void nvme_main()
 
 	while(1)
 	{
-		if(g_nvmeTask.status == NVME_TASK_WAIT_CC_EN)
+		if(g_nvmeTask.status == NVME_TASK_IDLE)
+		{
+			unsigned int ccEn;
+
+			ccEn = check_nvme_cc_en();
+			if(ccEn == 0)
+				g_nvmeWaitCcObservedDisabled = 1;
+			else if(g_nvmeWaitCcObservedDisabled != 0)
+				g_nvmeTask.status = NVME_TASK_WAIT_CC_EN;
+		}
+		else if(g_nvmeTask.status == NVME_TASK_WAIT_CC_EN)
 		{
 			unsigned int ccEn;
 			ccEn = check_nvme_cc_en();
-			if(ccEn == 1)
+			if(ccEn == 0)
 			{
+				g_nvmeWaitCcObservedDisabled = 1;
+			}
+			else
+			{
+				if(g_nvmeWaitCcObservedDisabled == 0)
+					g_nvmeWaitCcObservedDisabled = 1;
+
+				g_nvmeWaitCcObservedDisabled = 0;
 				set_nvme_admin_queue(1, 1, 1);
 				set_nvme_csts_rdy(1);
 				nvme_smp_enable_io();
@@ -149,6 +200,7 @@ void nvme_main()
 			nvme_smp_reset_queues();
 			reset_host_dma_credit();
 			set_nvme_csts_shst(2);
+			waitResetStartNs = nvme_main_now_ns();
 			g_nvmeTask.status = NVME_TASK_WAIT_RESET;
 
 			xil_printf("\r\nNVMe shutdown!!!\r\n");
@@ -156,26 +208,33 @@ void nvme_main()
 		else if(g_nvmeTask.status == NVME_TASK_WAIT_RESET)
 		{
 			unsigned int ccEn;
-			ccEn = check_nvme_cc_en();
-			if(ccEn == 0)
-			{
-                unsigned int qID;
+			unsigned int qID;
 
+			ccEn = check_nvme_cc_en();
+			if(waitResetStartNs == 0)
+				waitResetStartNs = nvme_main_now_ns();
+
+			if((ccEn == 0) ||
+			   ((nvme_main_now_ns() - waitResetStartNs) >=
+			    NVME_SHUTDOWN_REARM_DELAY_NS))
+			{
 				g_nvmeTask.cacheEn = 0;
 				nvme_smp_disable_io();
 				nvme_smp_reset_queues();
 				ssd_model_reset();
 				reset_host_dma_credit();
-				set_nvme_csts_shst(0);
-				set_nvme_csts_rdy(0);
+				clear_nvme_status_for_rearm();
 
-                set_nvme_admin_queue(0, 0, 0);
-                for(qID = 0; qID < 8; qID++)
-                {
-                    set_io_cq(qID, 0, 0, 0, 0, 0, 0);
-                    set_io_sq(qID, 0, 0, 0, 0, 0);
-                }
+				set_nvme_admin_queue(0, 0, 0);
+				for(qID = 0; qID < 8; qID++)
+				{
+					set_io_cq(qID, 0, 0, 0, 0, 0, 0);
+					set_io_sq(qID, 0, 0, 0, 0, 0);
+				}
 
+				waitResetStartNs = 0;
+				g_nvmeWaitCcObservedDisabled = 0;
+				dev_irq_init();
 				g_nvmeTask.status = NVME_TASK_IDLE;
 				xil_printf("\r\nNVMe disable!!!\r\n");
 			}
