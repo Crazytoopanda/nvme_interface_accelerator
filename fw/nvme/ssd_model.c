@@ -60,13 +60,14 @@
 
 #define SSD_MODEL_FLUSH_BASE_NS			100000ULL
 #define SSD_MODEL_WORKER_TIMEOUT_NS		100000000ULL
+#define SSD_MODEL_NAND_TOTAL_MIB_PER_SEC	((NAND_CHANNELS * 1ULL) * \
+						 NAND_CHANNEL_BANDWIDTH)
 #define SSD_MODEL_READ_SMALL_LIMIT_BYTES		(64ULL * 1024ULL)
-// Large-transfer caps are calibrated for FPGA libnvm bandwidth parity with NVMeVirt; keep small-IO caps separate.
 #define SSD_MODEL_READ_SMALL_MIB_PER_SEC	4700ULL
-#define SSD_MODEL_READ_LARGE_MIB_PER_SEC	9800ULL
+#define SSD_MODEL_READ_LARGE_MIB_PER_SEC	SSD_MODEL_NAND_TOTAL_MIB_PER_SEC
 #define SSD_MODEL_WRITE_SMALL_LIMIT_BYTES	(64ULL * 1024ULL)
 #define SSD_MODEL_WRITE_SMALL_MIB_PER_SEC	1000ULL
-#define SSD_MODEL_WRITE_LARGE_MIB_PER_SEC	11000ULL
+#define SSD_MODEL_WRITE_LARGE_MIB_PER_SEC	SSD_MODEL_NAND_TOTAL_MIB_PER_SEC
 #define SSD_MODEL_GC_THRES_LINES		2U
 #define SSD_MODEL_GC_THRES_LINES_HIGH		2U
 
@@ -297,6 +298,9 @@ void ssd_model_worker_heartbeat(void)
 
 static unsigned int ssd_model_use_worker(void)
 {
+#ifdef DISABLE_NVMEVIRT
+	return 0;
+#endif
 #if SSD_MODEL_CORE == NVME_HOST_CORE
 	return 0;
 #else
@@ -1359,6 +1363,7 @@ void ssd_model_reset(void)
 		g_ssdModelIo[idx].writeDmaSubmitted = 0;
 	}
 
+#ifndef DISABLE_NVMEVIRT
 	for(idx = 0; idx < SSD_MODEL_NUM_LANES; idx++)
 		g_nandLaneAvailNs[idx] = 0;
 
@@ -1379,6 +1384,7 @@ void ssd_model_reset(void)
 	g_readPipeAvailNs = 0;
 	g_writeFrontendAvailNs = 0;
 	ssd_model_ftl_reset();
+#endif
 
 	ssd_model_unlock();
 }
@@ -1408,6 +1414,7 @@ void ssd_model_init(void)
 		g_ssdModelIo[idx].writeDmaSubmitted = 0;
 	}
 
+#ifndef DISABLE_NVMEVIRT
 	for(idx = 0; idx < SSD_MODEL_NUM_LANES; idx++)
 		g_nandLaneAvailNs[idx] = 0;
 
@@ -1428,6 +1435,7 @@ void ssd_model_init(void)
 	g_readPipeAvailNs = 0;
 	g_writeFrontendAvailNs = 0;
 	ssd_model_ftl_reset();
+#endif
 
 	__sync_synchronize();
 }
@@ -1549,6 +1557,13 @@ static unsigned int ssd_model_submit(unsigned char op,
 
 	__sync_synchronize();
 	io->valid = 1;
+
+#ifdef DISABLE_NVMEVIRT
+	g_ssdModelDebug[11]++;
+	io->modelReady = 1;
+	ssd_model_try_complete(io);
+	return 1;
+#endif
 
 	if(useWorker)
 	{

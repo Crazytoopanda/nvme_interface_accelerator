@@ -52,7 +52,7 @@
 #define WRITE_UNIT_SIZE (512)
 
 #define NAND_CHANNEL_BANDWIDTH (1200ULL)
-#define PCIE_BANDWIDTH (76800ULL) /* kept for profile parity; firmware uses real PCIe DMA */
+#define PCIE_BANDWIDTH (16384ULL) /* kept for profile parity; firmware uses real PCIe DMA */
 
 #define NAND_4KB_READ_LATENCY_LSB (35760ULL - 6000ULL)
 #define NAND_4KB_READ_LATENCY_MSB (35760ULL + 6000ULL)
@@ -71,7 +71,7 @@
 #define OP_AREA_PERCENT (7)
 
 #define GLOBAL_WB_SIZE (NAND_CHANNELS * LUNS_PER_NAND_CH * ONESHOT_PAGE_SIZE * 2)
-#define WRITE_EARLY_COMPLETION 1
+#define WRITE_EARLY_COMPLETION 0
 
 #ifndef NVME_BOOT_ERASE_BYTES
 #define NVME_BOOT_ERASE_BYTES (0ULL)
