@@ -54,7 +54,8 @@ http://www.hanyang.ac.kr/
 module pcie_rx_dma # (
 	parameter	P_PCIE_DATA_WIDTH			= 512,
 	parameter	C_PCIE_ADDR_WIDTH			= 48, //modified
-	parameter	C_M_AXI_DATA_WIDTH			= 512
+	parameter	C_M_AXI_DATA_WIDTH			= 512,
+	parameter	P_PCIE_RX_MRD_MAX_BYTES	= 4096
 )
 (
 	input									pcie_user_clk,
@@ -83,7 +84,7 @@ module pcie_rx_dma # (
 	input									pcie_rx_fifo_rd_en,
 	output	[C_M_AXI_DATA_WIDTH-1:0]		pcie_rx_fifo_rd_data,
 	input									pcie_rx_fifo_free_en,
-	input	[10:6]							pcie_rx_fifo_free_len, 
+	input	[12:6]							pcie_rx_fifo_free_len, 
 	output									pcie_rx_fifo_empty_n
 );
 
@@ -93,7 +94,7 @@ wire										w_pcie_rx_cmd_empty_n;
 
 wire										w_pcie_tag_alloc;
 wire	[7:0]								w_pcie_alloc_tag;
-wire	[10:6]								w_pcie_tag_alloc_len; 
+wire	[12:6]								w_pcie_tag_alloc_len; 
 wire										w_pcie_tag_full_n;
 wire										w_pcie_rx_fifo_full_n;
 
@@ -178,7 +179,8 @@ pcie_rx_tag_inst0
 
 pcie_rx_req # (
 	.P_PCIE_DATA_WIDTH						(P_PCIE_DATA_WIDTH),
-	.C_PCIE_ADDR_WIDTH						(C_PCIE_ADDR_WIDTH)
+	.C_PCIE_ADDR_WIDTH					(C_PCIE_ADDR_WIDTH),
+	.P_PCIE_RX_MRD_MAX_BYTES		(P_PCIE_RX_MRD_MAX_BYTES)
 )
 pcie_rx_req_inst0(
 	.pcie_user_clk							(pcie_user_clk),

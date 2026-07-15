@@ -59,7 +59,8 @@ module m_axi_dma # (
 	parameter	C_M_AXI_WUSER_WIDTH			= 1,
 	parameter	C_M_AXI_BUSER_WIDTH			= 1,
 	parameter	C_M_AXI_ARUSER_WIDTH		= 1,
-	parameter	C_M_AXI_RUSER_WIDTH			= 1
+	parameter	C_M_AXI_RUSER_WIDTH			= 1,
+	parameter	P_AXI_WRITE_MAX_BYTES		= 4096
 )
 (
 ////////////////////////////////////////////////////////////////
@@ -128,7 +129,7 @@ module m_axi_dma # (
 	output									pcie_rx_fifo_rd_en,
 	input	[C_M_AXI_DATA_WIDTH-1:0]		pcie_rx_fifo_rd_data,
 	output									pcie_rx_fifo_free_en,
-	output	[10:6]							pcie_rx_fifo_free_len,
+	output	[12:6]							pcie_rx_fifo_free_len,
 	input									pcie_rx_fifo_empty_n,
 
 	output									pcie_tx_fifo_alloc_en,
@@ -209,7 +210,8 @@ m_axi_write # (
 	.C_M_AXI_ID_WIDTH						(C_M_AXI_ID_WIDTH),
 	.C_M_AXI_AWUSER_WIDTH					(C_M_AXI_AWUSER_WIDTH),
 	.C_M_AXI_WUSER_WIDTH					(C_M_AXI_WUSER_WIDTH),
-	.C_M_AXI_BUSER_WIDTH					(C_M_AXI_BUSER_WIDTH)
+	.C_M_AXI_BUSER_WIDTH					(C_M_AXI_BUSER_WIDTH),
+	.P_AXI_WRITE_MAX_BYTES				(P_AXI_WRITE_MAX_BYTES)
 )
 m_axi_write_inst0(
 

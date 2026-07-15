@@ -59,6 +59,8 @@ module nvme_pcie # (
 	parameter	C_M_AXI_DATA_WIDTH			= 512,
 	parameter	C_M_AXI_ADDR_WIDTH			= 64,
 	parameter	P_SQE_DATA_WIDTH			= 128,
+	parameter	P_PCIE_RX_MRD_MAX_BYTES	= 4096,
+	parameter	P_PCIE_TX_MWR_MAX_BYTES	= 1024,
 
 	parameter KEEP_WIDTH                                 = C_PCIE_DATA_WIDTH / 32, 
 	parameter TCQ                                        = 1,
@@ -176,7 +178,7 @@ module nvme_pcie # (
 	input									pcie_rx_fifo_rd_en,
 	output	[C_M_AXI_DATA_WIDTH-1:0]		pcie_rx_fifo_rd_data,
 	input									pcie_rx_fifo_free_en,
-	input	[10:6]							pcie_rx_fifo_free_len, 
+	input	[12:6]							pcie_rx_fifo_free_len, 
 	output									pcie_rx_fifo_empty_n,
 
 	input									pcie_tx_fifo_alloc_en,
@@ -628,7 +630,9 @@ pcie_hcmd_inst0(
 
 dma_if # (
 	.P_SLOT_TAG_WIDTH						(P_SLOT_TAG_WIDTH), //slot_modified
-	.C_M_AXI_ADDR_WIDTH					(C_M_AXI_ADDR_WIDTH)
+	.C_M_AXI_ADDR_WIDTH				(C_M_AXI_ADDR_WIDTH),
+	.P_PCIE_RX_MRD_MAX_BYTES		(P_PCIE_RX_MRD_MAX_BYTES),
+	.P_PCIE_TX_MWR_MAX_BYTES		(P_PCIE_TX_MWR_MAX_BYTES)
 )
 dma_if_inst0
 (

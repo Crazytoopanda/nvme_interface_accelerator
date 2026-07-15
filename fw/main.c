@@ -67,6 +67,7 @@
 #include "xscugic_hw.h"
 #include "xscugic.h"
 #include "xil_printf.h"
+#include "xil_types.h"
 #include "nvme/debug.h"
 
 #include "nvme/nvme.h"
@@ -82,6 +83,41 @@
 
 
 XScuGic GicInstance;
+
+static void flush_ecc_mem_range(UINTPTR addr, UINTPTR size)
+{
+	const UINTPTR cacheLineSize = 64;
+	const UINTPTR flushChunkSize = 256ULL * 1024ULL * 1024ULL;
+	UINTPTR alignedAddr = addr & ~(cacheLineSize - 1U);
+	UINTPTR endAddr = (addr + size + cacheLineSize - 1U) & ~(cacheLineSize - 1U);
+	UINTPTR chunkBase;
+
+	for (chunkBase = alignedAddr; chunkBase < endAddr; chunkBase += flushChunkSize) {
+		UINTPTR chunkEnd = chunkBase + flushChunkSize;
+		UINTPTR a;
+
+		if (chunkEnd > endAddr)
+			chunkEnd = endAddr;
+
+		__asm__ volatile("dsb sy" ::: "memory");
+		for (a = chunkBase; a < chunkEnd; a += cacheLineSize)
+			__asm__ volatile("dc zva, %0" :: "r"(a) : "memory");
+		__asm__ volatile("dsb sy" ::: "memory");
+
+		Xil_DCacheFlushRange(chunkBase, chunkEnd - chunkBase);
+		__asm__ volatile("dsb sy" ::: "memory");
+	}
+}
+
+static void init_ecc_memory(void)
+{
+	const UINTPTR eccInitBase = (UINTPTR)DRAM_START_ADDR;
+	const UINTPTR eccInitSize = (UINTPTR)(DRAM_END_ADDR - DRAM_START_ADDR + 1ULL);
+
+	xil_printf("Initialize ECC memory...\r\n");
+	flush_ecc_mem_range(eccInitBase, eccInitSize);
+	xil_printf("ECC memory initialized.\r\n");
+}
 
 int main()
 {
@@ -129,7 +165,8 @@ int main()
 	Xil_ICacheEnable();
 	Xil_DCacheEnable();
 	xil_printf("[!] MMU has been enabled.\r\n");
-
+	init_ecc_memory();
+	
 	xil_printf("\r\n Hello DaisyPlus OpenSSD !!! \r\n");
 
 	Xil_ExceptionInit();

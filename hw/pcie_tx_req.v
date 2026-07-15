@@ -53,7 +53,8 @@ http://www.hanyang.ac.kr/
    module pcie_tx_req # (
 	parameter 	P_SLOT_TAG_WIDTH			=  10, //slot_modified
 	parameter	C_PCIE_DATA_WIDTH			= 512,
-	parameter	C_PCIE_ADDR_WIDTH			= 48 //modified
+	parameter	C_PCIE_ADDR_WIDTH			= 48, //modified
+	parameter	P_PCIE_TX_MWR_MAX_BYTES	= 1024
 )
 (
        input									pcie_user_clk,
@@ -111,6 +112,29 @@ http://www.hanyang.ac.kr/
        reg		[C_PCIE_ADDR_WIDTH-1:2]				r_pcie_addr;
     
        reg											r_dma_tx_done_wr_en;
+
+wire	[10:2]									w_pcie_tx_cfg_max_len;
+wire	[10:2]									w_pcie_tx_max_len;
+localparam [10:2] LP_PCIE_TX_PARAM_MAX_LEN = P_PCIE_TX_MWR_MAX_BYTES / 4;
+
+assign w_pcie_tx_cfg_max_len = (r_pcie_max_payload_size == 2'b11) ? 9'h100 :
+								 (r_pcie_max_payload_size == 2'b10) ? 9'h080 :
+								 (r_pcie_max_payload_size == 2'b01) ? 9'h040 : 9'h020;
+assign w_pcie_tx_max_len = (w_pcie_tx_cfg_max_len < LP_PCIE_TX_PARAM_MAX_LEN) ?
+								 w_pcie_tx_cfg_max_len : LP_PCIE_TX_PARAM_MAX_LEN;
+
+function [10:2] f_pcie_tx_cur_len;
+	input [12:2] remain_len;
+	input [10:2] max_len;
+	begin
+		if(remain_len >= {2'b0, max_len})
+			f_pcie_tx_cur_len = max_len;
+		else if(remain_len[9:6] != 0)
+			f_pcie_tx_cur_len = {1'b0, remain_len[9:6], 4'b0};
+		else
+			f_pcie_tx_cur_len = {5'b0, remain_len[5:2]};
+	end
+endfunction
 
 assign pcie_tx_cmd_rd_en = r_pcie_tx_cmd_rd_en;
 
@@ -208,43 +232,7 @@ begin
 		S_PCIE_TX_CMD_1: begin
 			r_pcie_orig_len <= r_pcie_tx_len;
 
-			case(r_pcie_max_payload_size)
-	            2'b11: begin
-					if(r_pcie_tx_len[12:2] >= 9'h100)
-						r_pcie_tx_cur_len[10:2] <= 9'h100;
-					else if(r_pcie_tx_len[9:6] != 0)
-						r_pcie_tx_cur_len[10:2] <= {1'b0, r_pcie_tx_len[9:6], 4'b0};  
-					else
-						r_pcie_tx_cur_len[10:2] <= {5'b0, r_pcie_tx_len[5:2]};  
-		        end
-
-	            2'b10: begin
-					if(r_pcie_tx_len[12:2] >= 9'h80)
-						r_pcie_tx_cur_len[10:2] <= 9'h80;
-					else if(r_pcie_tx_len[8:6] != 0)
-						r_pcie_tx_cur_len[10:2] <= {2'b0, r_pcie_tx_len[8:6], 4'b0};  
-					else
-						r_pcie_tx_cur_len[10:2] <= {5'b0, r_pcie_tx_len[5:2]};
-		        end
-
-	            2'b01: begin
-					 if(r_pcie_tx_len[12:2] >= 9'h40)
-		                r_pcie_tx_cur_len[10:2] <= 9'h40;
-					else if(r_pcie_tx_len[7:6] != 0)
-						r_pcie_tx_cur_len[10:2] <= {3'b0, r_pcie_tx_len[7:6], 4'b0};  
-					else
-						r_pcie_tx_cur_len[10:2] <= {5'b0, r_pcie_tx_len[5:2]};
-		        end
-			
-		        default: begin
-		            if(r_pcie_tx_len[12:2] >= 9'h20)
-		                r_pcie_tx_cur_len[10:2] <= 9'h20;                    
-					else if(r_pcie_tx_len[6] != 0)
-						r_pcie_tx_cur_len[10:2] <= {4'b0, r_pcie_tx_len[6], 4'b0};  
-		            else
-						r_pcie_tx_cur_len[10:2] <= {5'b0, r_pcie_tx_len[5:2]};
-				end
-		    endcase
+			r_pcie_tx_cur_len <= f_pcie_tx_cur_len(r_pcie_tx_len, w_pcie_tx_max_len);
 			r_pcie_addr <= pcie_tx_cmd_rd_data[45:0]; //modified
 		end
 		S_PCIE_CHK_FIFO: begin
@@ -260,40 +248,7 @@ begin
 	        r_pcie_tx_len <= r_pcie_tx_len - r_pcie_tx_cur_len;
 		end
 		S_PCIE_MWR_NEXT: begin
-	        case(r_pcie_max_payload_size)
-	            2'b11: begin
-                    if(r_pcie_tx_len[12:2] >= 9'h100)
-                       r_pcie_tx_cur_len[10:2] <= 9'h100;
-					else if(r_pcie_tx_len[9:6] != 0)
-						r_pcie_tx_cur_len[10:2] <= {1'b0, r_pcie_tx_len[9:6], 4'b0};  
-					else
-						r_pcie_tx_cur_len[10:2] <= {5'b0, r_pcie_tx_len[5:2]};  
-                end
-	            2'b10: begin
-                    if(r_pcie_tx_len[12:2] >= 9'h80)
-                        r_pcie_tx_cur_len[10:2] <= 9'h80;
-					else if(r_pcie_tx_len[8:6] != 0)
-						r_pcie_tx_cur_len[10:2] <= {2'b0, r_pcie_tx_len[8:6], 4'b0};  
-					else
-						r_pcie_tx_cur_len[10:2] <= {5'b0, r_pcie_tx_len[5:2]};
-                end
-	            2'b01: begin
-                    if(r_pcie_tx_len[12:2] >= 9'h40)
-                        r_pcie_tx_cur_len[10:2] <= 9'h40;
-					else if(r_pcie_tx_len[7:6] != 0)
-						r_pcie_tx_cur_len[10:2] <= {3'b0, r_pcie_tx_len[7:6], 4'b0};  
-					else
-						r_pcie_tx_cur_len[10:2] <= {5'b0, r_pcie_tx_len[5:2]};
-                end
-                default: begin
-                    if(r_pcie_tx_len[12:2] >= 9'h20)
-                         r_pcie_tx_cur_len[10:2] <= 9'h20;
-	 				else if(r_pcie_tx_len[6] != 0)
- 	 					 r_pcie_tx_cur_len[10:2] <= {4'b0, r_pcie_tx_len[6], 4'b0};  
-	 	            else
-						 r_pcie_tx_cur_len[10:2] <= {5'b0, r_pcie_tx_len[5:2]};
-                end
-            endcase   
+	        r_pcie_tx_cur_len <= f_pcie_tx_cur_len(r_pcie_tx_len, w_pcie_tx_max_len);   
 		end
 		S_PCIE_DMA_DONE_WR_WAIT: begin
 

@@ -79,6 +79,9 @@ module user_top # (
 
 	parameter	C_PCIE_DATA_WIDTH			= 512,
 	parameter	C_PCIE_ADDR_WIDTH			= 48, //modified
+	parameter	P_AXI_WRITE_MAX_BYTES		= 4096,
+	parameter	P_PCIE_RX_MRD_MAX_BYTES	= 4096,
+	parameter	P_PCIE_TX_MWR_MAX_BYTES	= 1024,
 
 	// Do not override parameters below this line
 	parameter KEEP_WIDTH                                 = C_PCIE_DATA_WIDTH / 32,
@@ -597,7 +600,7 @@ wire	[7:0]								w_dma_tx_done_cnt;
 wire										w_pcie_rx_fifo_rd_en;
 wire	[C_M0_AXI_DATA_WIDTH-1:0]			w_pcie_rx_fifo_rd_data;
 wire										w_pcie_rx_fifo_free_en;
-wire	[10:6]								w_pcie_rx_fifo_free_len; 
+wire	[12:6]								w_pcie_rx_fifo_free_len; 
 wire										w_pcie_rx_fifo_empty_n;
 
 wire										w_pcie_tx_fifo_alloc_en;
@@ -794,7 +797,8 @@ s_axi_top # (
 	.C_M0_AXI_WUSER_WIDTH					(C_M0_AXI_WUSER_WIDTH),
 	.C_M0_AXI_BUSER_WIDTH					(C_M0_AXI_BUSER_WIDTH),
 	.C_M0_AXI_ARUSER_WIDTH					(C_M0_AXI_ARUSER_WIDTH),
-	.C_M0_AXI_RUSER_WIDTH					(C_M0_AXI_RUSER_WIDTH)
+	.C_M0_AXI_RUSER_WIDTH					(C_M0_AXI_RUSER_WIDTH),
+	.P_AXI_WRITE_MAX_BYTES				(P_AXI_WRITE_MAX_BYTES)
 )
 s_axi_top_inst0 (
 
@@ -1175,7 +1179,10 @@ reg_cpu_pcie_sync_isnt0
 nvme_pcie # (
 	.P_SLOT_TAG_WIDTH						(P_SLOT_TAG_WIDTH), //slot_modified
 	.P_SLOT_WIDTH							(P_SLOT_WIDTH), //slot_modified
-	.C_PCIE_DATA_WIDTH						(C_PCIE_DATA_WIDTH),
+	.C_PCIE_DATA_WIDTH					(C_PCIE_DATA_WIDTH),
+	.C_PCIE_ADDR_WIDTH					(C_PCIE_ADDR_WIDTH),
+	.P_PCIE_RX_MRD_MAX_BYTES		(P_PCIE_RX_MRD_MAX_BYTES),
+	.P_PCIE_TX_MWR_MAX_BYTES		(P_PCIE_TX_MWR_MAX_BYTES),
 	.P_SQE_DATA_WIDTH						(C_S1_AXI_DATA_WIDTH)
 )
 nvme_pcie_inst0(

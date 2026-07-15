@@ -55,7 +55,8 @@ module pcie_tx_dma # (
 	parameter 	P_SLOT_TAG_WIDTH			=  10, //slot_modified
 	parameter	C_PCIE_DATA_WIDTH			= 512,
 	parameter	C_PCIE_ADDR_WIDTH			= 48, //modified
-	parameter	C_M_AXI_DATA_WIDTH			= 512
+	parameter	C_M_AXI_DATA_WIDTH			= 512,
+	parameter	P_PCIE_TX_MWR_MAX_BYTES	= 1024
 )
 (
 	input									pcie_user_clk,
@@ -143,7 +144,8 @@ pcie_tx_fifo_inst0
 pcie_tx_req # (
 	.P_SLOT_TAG_WIDTH						(P_SLOT_TAG_WIDTH), //slot_modified
 	.C_PCIE_DATA_WIDTH						(C_PCIE_DATA_WIDTH),
-	.C_PCIE_ADDR_WIDTH						(C_PCIE_ADDR_WIDTH)
+	.C_PCIE_ADDR_WIDTH					(C_PCIE_ADDR_WIDTH),
+	.P_PCIE_TX_MWR_MAX_BYTES		(P_PCIE_TX_MWR_MAX_BYTES)
 )
 pcie_tx_req_inst0(
 	.pcie_user_clk							(pcie_user_clk),

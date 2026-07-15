@@ -59,7 +59,8 @@ http://www.hanyang.ac.kr/
 	parameter	C_M_AXI_ID_WIDTH			= 1,
 	parameter	C_M_AXI_AWUSER_WIDTH		= 1,
 	parameter	C_M_AXI_WUSER_WIDTH			= 1,
-	parameter	C_M_AXI_BUSER_WIDTH			= 1
+	parameter	C_M_AXI_BUSER_WIDTH		= 1,
+	parameter	P_AXI_WRITE_MAX_BYTES		= 4096
 )
 (
 
@@ -108,7 +109,7 @@ http://www.hanyang.ac.kr/
  	output									pcie_rx_fifo_rd_en,
  	input	[C_M_AXI_DATA_WIDTH-1:0]		pcie_rx_fifo_rd_data,
  	output									pcie_rx_fifo_free_en,
- 	output	[10:6]							pcie_rx_fifo_free_len,
+ 	output	[12:6]							pcie_rx_fifo_free_len,
  	input									pcie_rx_fifo_empty_n,
 
  	output									dma_rx_done_wr_en,
@@ -116,7 +117,7 @@ http://www.hanyang.ac.kr/
 	 input									dma_rx_done_wr_rdy_n
 );
 
-localparam	LP_AW_DELAY						= 7;
+localparam	LP_AW_DELAY										= 0;
 localparam integer LP_AXI_BYTES					= C_M_AXI_DATA_WIDTH/8;
 localparam integer LP_AXI_DWORDS_PER_BEAT	= C_M_AXI_DATA_WIDTH/32;
 localparam integer LP_AXI_ADDR_LSB			= (C_M_AXI_DATA_WIDTH == 512) ? 6 :
@@ -126,6 +127,8 @@ localparam [2:0] LP_AXI_SIZE				= (C_M_AXI_DATA_WIDTH == 512) ? 3'd6 :
 									  (C_M_AXI_DATA_WIDTH == 256) ? 3'd5 :
 									  (C_M_AXI_DATA_WIDTH == 128) ? 3'd4 : 3'd3;
 localparam [5:0] LP_OUTSTANDING_MAX			= 6'd32;
+localparam [12:6] LP_MAX_RX_FREE_LINES		= P_AXI_WRITE_MAX_BYTES / LP_AXI_BYTES;
+localparam [12:2] LP_MAX_DEV_CUR_LEN		= {LP_MAX_RX_FREE_LINES, 4'b0};
 
 localparam	S_AW_IDLE						= 11'b00000000001;
 localparam	S_AW_CMD_0						= 11'b00000000010;
@@ -158,11 +161,11 @@ localparam	S_AW_DMA_DONE_WR				= 11'b10000000000;
      reg		[C_M_AXI_ADDR_WIDTH-1:2]				r_dev_addr_backup;     
      reg		[12:2]								r_dev_dma_len;
      reg		[12:2]								r_dev_dma_orig_len;
-     reg		[10:2]								r_dev_cur_len;
-     reg		[10:2]								r_wr_data_cnt;
+     reg		[12:2]								r_dev_cur_len;
+     reg		[12:2]								r_wr_data_cnt;
      reg		[4:0]								r_aw_delay;
        
-     reg		[10:2]								r_m_axi_awlen;
+     reg		[12:2]								r_m_axi_awlen;
      reg											r_m_axi_awvalid;
      reg		[C_M_AXI_DATA_WIDTH-1:0]			r_m_axi_wdata;
      reg											r_m_axi_wlast;
@@ -194,7 +197,7 @@ localparam	S_AW_DMA_DONE_WR				= 11'b10000000000;
 
  	reg			[2:0]                               r_wr_count;
 	reg                                             r_dummy_write;
-	reg			[10:6]								r_pcie_rx_fifo_free_len;
+	reg			[12:6]								r_pcie_rx_fifo_free_len;
 	 reg											r_2nd_dma;
      wire	[63:0]								w_one_padding;
 
@@ -202,7 +205,7 @@ assign w_one_padding = 64'hFFFF_FFFF_FFFF_FFFF;
 
 assign m_axi_awid = 0;
 assign m_axi_awaddr = {r_dev_addr, 2'b0};
-assign m_axi_awlen = r_m_axi_awlen[10:LP_AXI_ADDR_LSB];
+assign m_axi_awlen = r_m_axi_awlen[12:LP_AXI_ADDR_LSB];
 assign m_axi_awsize = LP_AXI_SIZE;
 assign m_axi_awburst = `D_AXBURST_INCR;
 assign m_axi_awlock = `D_AXLOCK_NORMAL;
@@ -282,6 +285,8 @@ begin
 		S_AW_DONE: begin
 			if(r_dummy_write != 1 && r_dev_dma_len == 0)
 				next_aw_state <= S_AW_DMA_DONE_WR_WAIT;
+			else if(LP_AW_DELAY == 0)
+				next_aw_state <= S_AW_WAIT_EMPTY_N;
 			else
 				next_aw_state <= S_AW_DELAY;
 		end
@@ -331,30 +336,30 @@ begin
 			r_dev_dma_orig_len <= r_dev_dma_len;
 			if(r_2nd_dma == 1) begin
 				if(r_dev_dma_len[5:2] != 0) begin
-					r_dev_cur_len[10:2]           <= {5'b0, r_dev_dma_len[5:2]};
-					r_pcie_rx_fifo_free_len[10:6] <= 5'b1;
+					r_dev_cur_len[12:2]           <= {7'b0, r_dev_dma_len[5:2]};
+					r_pcie_rx_fifo_free_len[12:6] <= 7'b1;
 				end
-				else if(r_dev_dma_len[12:2] >= 9'h100) begin
-					r_dev_cur_len[10:2]           <= 9'h100;
-					r_pcie_rx_fifo_free_len[10:6] <= 5'h10;
+				else if(r_dev_dma_len[12:2] >= LP_MAX_DEV_CUR_LEN) begin
+					r_dev_cur_len[12:2]           <= LP_MAX_DEV_CUR_LEN;
+					r_pcie_rx_fifo_free_len[12:6] <= LP_MAX_RX_FREE_LINES;
 				end
 				else begin
-					r_dev_cur_len[10:2]           <= {1'b0, r_dev_dma_len[9:6], 4'b0};
-					r_pcie_rx_fifo_free_len[10:6] <= {1'b0, r_dev_dma_len[9:6]};
+					r_dev_cur_len[12:2]           <= {r_dev_dma_len[12:6], 4'b0};
+					r_pcie_rx_fifo_free_len[12:6] <= r_dev_dma_len[12:6];
 				end
 			end
 			else begin
-				if(r_dev_dma_len[12:2] >= 9'h100) begin
-					r_dev_cur_len[10:2]           <= 9'h100;
-					r_pcie_rx_fifo_free_len[10:6] <= 5'h10;
+				if(r_dev_dma_len[12:2] >= LP_MAX_DEV_CUR_LEN) begin
+					r_dev_cur_len[12:2]           <= LP_MAX_DEV_CUR_LEN;
+					r_pcie_rx_fifo_free_len[12:6] <= LP_MAX_RX_FREE_LINES;
 				end
-				else if(r_dev_dma_len[9:6] != 0) begin
-					r_dev_cur_len[10:2]           <= {1'b0, r_dev_dma_len[9:6], 4'b0};
-					r_pcie_rx_fifo_free_len[10:6] <= {1'b0, r_dev_dma_len[9:6]};
+				else if(r_dev_dma_len[12:6] != 0) begin
+					r_dev_cur_len[12:2]           <= {r_dev_dma_len[12:6], 4'b0};
+					r_pcie_rx_fifo_free_len[12:6] <= r_dev_dma_len[12:6];
 				end
 				else begin
-					r_dev_cur_len[10:2]           <= {5'b0, r_dev_dma_len[5:2]};
-					r_pcie_rx_fifo_free_len[10:6] <= 5'b1;
+					r_dev_cur_len[12:2]           <= {7'b0, r_dev_dma_len[5:2]};
+					r_pcie_rx_fifo_free_len[12:6] <= 7'b1;
 				end
 			end
 
@@ -402,31 +407,31 @@ begin
 		S_AW_DONE: begin
 			if(r_dummy_write == 1) begin
 			    r_dev_addr                    <= {{(C_M_AXI_ADDR_WIDTH-30){1'b0}}, 30'hFFFFC00};
-				r_pcie_rx_fifo_free_len[10:6] <= 5'b0;
+				r_pcie_rx_fifo_free_len[12:6] <= 7'b0;
 			end
 			else begin
 				if(r_2nd_dma == 1) begin
-					if(r_dev_dma_len[12:2] >= 9'h100) begin
-						r_dev_cur_len[10:2]           <= 9'h100;
-						r_pcie_rx_fifo_free_len[10:6] <= 5'h10;
+					if(r_dev_dma_len[12:2] >= LP_MAX_DEV_CUR_LEN) begin
+						r_dev_cur_len[12:2]           <= LP_MAX_DEV_CUR_LEN;
+						r_pcie_rx_fifo_free_len[12:6] <= LP_MAX_RX_FREE_LINES;
 					end
 					else begin
-						r_dev_cur_len[10:2]           <= {1'b0, r_dev_dma_len[9:6], 4'b0};
-						r_pcie_rx_fifo_free_len[10:6] <= {1'b0, r_dev_dma_len[9:6]};
+						r_dev_cur_len[12:2]           <= {r_dev_dma_len[12:6], 4'b0};
+						r_pcie_rx_fifo_free_len[12:6] <= r_dev_dma_len[12:6];
 					end
 				end
 				else begin
-					if(r_dev_dma_len[12:2] >= 9'h100) begin
-						r_dev_cur_len[10:2]           <= 9'h100;
-						r_pcie_rx_fifo_free_len[10:6] <= 5'h10;
+					if(r_dev_dma_len[12:2] >= LP_MAX_DEV_CUR_LEN) begin
+						r_dev_cur_len[12:2]           <= LP_MAX_DEV_CUR_LEN;
+						r_pcie_rx_fifo_free_len[12:6] <= LP_MAX_RX_FREE_LINES;
 					end
-					else if(r_dev_dma_len[9:6] != 0) begin
-						r_dev_cur_len[10:2]           <= {1'b0, r_dev_dma_len[9:6], 4'b0};
-						r_pcie_rx_fifo_free_len[10:6] <= {1'b0, r_dev_dma_len[9:6]};
+					else if(r_dev_dma_len[12:6] != 0) begin
+						r_dev_cur_len[12:2]           <= {r_dev_dma_len[12:6], 4'b0};
+						r_pcie_rx_fifo_free_len[12:6] <= r_dev_dma_len[12:6];
 					end
 					else begin
-						r_dev_cur_len[10:2]           <= {5'b0, r_dev_dma_len[5:2]};
-						r_pcie_rx_fifo_free_len[10:6] <= 5'b1;
+						r_dev_cur_len[12:2]           <= {7'b0, r_dev_dma_len[5:2]};
+						r_pcie_rx_fifo_free_len[12:6] <= 7'b1;
 					end
 				end
 				r_dev_addr <= r_dev_addr + r_dev_cur_len;

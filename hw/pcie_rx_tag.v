@@ -61,7 +61,7 @@ module pcie_rx_tag # (
 
 	input									pcie_tag_alloc,
 	input	[7:0]							pcie_alloc_tag,
-	input	[10:6]							pcie_tag_alloc_len,
+	input	[12:6]							pcie_tag_alloc_len,
 	output									pcie_tag_full_n,
 
 	input	[7:0]							cpld_fifo_tag,

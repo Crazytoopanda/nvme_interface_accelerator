@@ -56,7 +56,9 @@ module dma_if # (
 	parameter	C_PCIE_DATA_WIDTH			= 512,
 	parameter	C_PCIE_ADDR_WIDTH			= 48, //modified
 	parameter	C_M_AXI_DATA_WIDTH			= 512,
-	parameter	C_M_AXI_ADDR_WIDTH			= 64
+	parameter	C_M_AXI_ADDR_WIDTH			= 64,
+	parameter	P_PCIE_RX_MRD_MAX_BYTES	= 4096,
+	parameter	P_PCIE_TX_MWR_MAX_BYTES	= 1024
 )
 (
 	input									pcie_user_clk,
@@ -141,7 +143,7 @@ module dma_if # (
 	input									pcie_rx_fifo_rd_en,
 	output	[C_M_AXI_DATA_WIDTH-1:0]		pcie_rx_fifo_rd_data,
 	input									pcie_rx_fifo_free_en,
-	input	[10:6]							pcie_rx_fifo_free_len, 
+	input	[12:6]							pcie_rx_fifo_free_len, 
 	output									pcie_rx_fifo_empty_n,
 
 	input									pcie_tx_fifo_alloc_en,
@@ -247,7 +249,12 @@ dma_cmd_inst0
 	.dma_rx_done_wr_rdy_n					(dma_rx_done_wr_rdy_n)
 );
 
-pcie_rx_dma
+pcie_rx_dma # (
+	.P_PCIE_DATA_WIDTH					(C_PCIE_DATA_WIDTH),
+	.C_PCIE_ADDR_WIDTH					(C_PCIE_ADDR_WIDTH),
+	.C_M_AXI_DATA_WIDTH				(C_M_AXI_DATA_WIDTH),
+	.P_PCIE_RX_MRD_MAX_BYTES		(P_PCIE_RX_MRD_MAX_BYTES)
+)
 pcie_rx_dma_inst0
 (
 	.pcie_user_clk							(pcie_user_clk),
@@ -281,7 +288,11 @@ pcie_rx_dma_inst0
 );
 
 pcie_tx_dma # (
-	.P_SLOT_TAG_WIDTH						(P_SLOT_TAG_WIDTH) //slot_modified
+	.P_SLOT_TAG_WIDTH					(P_SLOT_TAG_WIDTH), //slot_modified
+	.C_PCIE_DATA_WIDTH					(C_PCIE_DATA_WIDTH),
+	.C_PCIE_ADDR_WIDTH					(C_PCIE_ADDR_WIDTH),
+	.C_M_AXI_DATA_WIDTH				(C_M_AXI_DATA_WIDTH),
+	.P_PCIE_TX_MWR_MAX_BYTES		(P_PCIE_TX_MWR_MAX_BYTES)
 )
 pcie_tx_dma_inst0
 (

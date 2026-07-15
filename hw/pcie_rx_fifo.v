@@ -63,7 +63,7 @@ module pcie_rx_fifo # (
 	input	[P_FIFO_WR_DATA_WIDTH-1:0]		wr_data,
 	input	[P_FIFO_DEPTH_WIDTH:0]			rear_full_addr,
 	input	[P_FIFO_DEPTH_WIDTH:0]			rear_addr,
-	input	[10:6]							alloc_len,
+	input	[12:6]							alloc_len,
 	output									full_n,
 
 	input									rd_clk,
@@ -72,7 +72,7 @@ module pcie_rx_fifo # (
 	input									rd_en,
 	output	[P_FIFO_RD_DATA_WIDTH-1:0]		rd_data,
 	input									free_en,
-	input	[10:6]							free_len,
+	input	[12:6]							free_len,
 	output									empty_n
 );
 

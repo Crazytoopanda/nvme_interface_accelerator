@@ -51,7 +51,8 @@ http://www.hanyang.ac.kr/
 
 module pcie_rx_req # (
 	parameter	P_PCIE_DATA_WIDTH			= 512,
-	parameter	C_PCIE_ADDR_WIDTH			= 48 //modified
+	parameter	C_PCIE_ADDR_WIDTH			= 48, //modified
+	parameter	P_PCIE_RX_MRD_MAX_BYTES	= 4096
 )
 (
 	input									pcie_user_clk,
@@ -65,7 +66,7 @@ module pcie_rx_req # (
 
 	output									pcie_tag_alloc,
 	output	[7:0]							pcie_alloc_tag,
-	output	[10:6]							pcie_tag_alloc_len,
+	output	[12:6]							pcie_tag_alloc_len,
 	input									pcie_tag_full_n,
 	input									pcie_rx_fifo_full_n,
 
@@ -98,7 +99,7 @@ reg		[2:0]								r_pcie_max_read_req_size;
 reg											r_pcie_rx_cmd_rd_en;
 
 reg		[12:2]								r_pcie_rx_len;
-reg		[10:2]								r_pcie_rx_cur_len;
+reg		[12:2]								r_pcie_rx_cur_len;
 reg		[C_PCIE_ADDR_WIDTH-1:2]				r_pcie_addr;
 reg		[4:0]								r_pcie_rx_tag;
 reg											r_pcie_rx_tag_update;
@@ -109,15 +110,43 @@ reg											r_tx_dma_mrd_req;
 
 reg											r_2nd_dma;
 
+wire	[12:2]									w_pcie_rx_cfg_max_len;
+wire	[12:2]									w_pcie_rx_max_len;
+localparam [12:2] LP_PCIE_RX_PARAM_MAX_LEN = P_PCIE_RX_MRD_MAX_BYTES / 4;
+
+assign w_pcie_rx_cfg_max_len = (r_pcie_max_read_req_size == 3'b101) ? 11'h400 :
+								 (r_pcie_max_read_req_size == 3'b100) ? 11'h200 :
+								 (r_pcie_max_read_req_size == 3'b011) ? 11'h100 :
+								 (r_pcie_max_read_req_size == 3'b010) ? 11'h080 :
+								 (r_pcie_max_read_req_size == 3'b001) ? 11'h040 : 11'h020;
+assign w_pcie_rx_max_len = (w_pcie_rx_cfg_max_len < LP_PCIE_RX_PARAM_MAX_LEN) ?
+								 w_pcie_rx_cfg_max_len : LP_PCIE_RX_PARAM_MAX_LEN;
+
+function [12:2] f_pcie_rx_cur_len;
+	input [12:2] remain_len;
+	input [12:2] max_len;
+	input is_2nd_dma;
+	begin
+		if(is_2nd_dma == 1'b1 && remain_len[5:2] != 0)
+			f_pcie_rx_cur_len = {7'b0, remain_len[5:2]};
+		else if(remain_len >= max_len)
+			f_pcie_rx_cur_len = max_len;
+		else if(remain_len[12:6] != 0)
+			f_pcie_rx_cur_len = {remain_len[12:6], 4'b0};
+		else
+			f_pcie_rx_cur_len = {7'b0, remain_len[5:2]};
+	end
+endfunction
+
 assign pcie_rx_cmd_rd_en = r_pcie_rx_cmd_rd_en;
 
 assign pcie_tag_alloc = r_pcie_tag_alloc;
 assign pcie_alloc_tag = {LP_PCIE_TAG_PREFIX, r_pcie_rx_tag};
-assign pcie_tag_alloc_len = (r_pcie_rx_cur_len[5:2] != 0)?r_pcie_rx_cur_len[10:6] + 1:r_pcie_rx_cur_len[10:6];
+assign pcie_tag_alloc_len = (r_pcie_rx_cur_len[5:2] != 0)?r_pcie_rx_cur_len[12:6] + 1:r_pcie_rx_cur_len[12:6];
 
 assign tx_dma_mrd_req = r_tx_dma_mrd_req;
 assign tx_dma_mrd_tag = {LP_PCIE_TAG_PREFIX, r_pcie_rx_tag};
-assign tx_dma_mrd_len = {2'b0, r_pcie_rx_cur_len};
+assign tx_dma_mrd_len = r_pcie_rx_cur_len;
 assign tx_dma_mrd_addr = r_pcie_addr;
 
 always @ (posedge pcie_user_clk or negedge pcie_user_rst_n)
@@ -217,80 +246,7 @@ begin
 				r_2nd_dma <= 0;
 		end
 		S_PCIE_RX_CMD_1: begin
-			case(r_pcie_max_read_req_size)
-				3'b011, 3'b100, 3'b101: begin
-					if(r_2nd_dma == 1) begin
-						if(r_pcie_rx_len[5:2] != 0)
-							r_pcie_rx_cur_len[10:2] <= {5'b0, r_pcie_rx_len[5:2]};
-						else if(r_pcie_rx_len[12:2] >= 9'h100)
-							r_pcie_rx_cur_len[10:2] <= 9'h100;
-						else
-							r_pcie_rx_cur_len[10:2] <= {1'b0, r_pcie_rx_len[9:6], 4'b0};
-					end
-					else begin
-						if(r_pcie_rx_len[12:2] >= 9'h100)
-							r_pcie_rx_cur_len[10:2] <= 9'h100;
-						else if(r_pcie_rx_len[9:6] != 0)
-							r_pcie_rx_cur_len[10:2] <= {1'b0, r_pcie_rx_len[9:6], 4'b0};
-						else
-							r_pcie_rx_cur_len[10:2] <= {5'b0, r_pcie_rx_len[5:2]};
-					end
-				end
-				3'b010: begin
-					if(r_2nd_dma == 1) begin
-						if(r_pcie_rx_len[5:2] != 0)
-							r_pcie_rx_cur_len[10:2] <= {5'b0, r_pcie_rx_len[5:2]};
-						else if(r_pcie_rx_len[12:2] >= 9'h80)
-							r_pcie_rx_cur_len[10:2] <= 9'h80;
-						else
-							r_pcie_rx_cur_len[10:2] <= {2'b00, r_pcie_rx_len[8:6], 4'b0};
-					end
-					else begin
-						if(r_pcie_rx_len[12:2] >= 9'h80)
-							r_pcie_rx_cur_len[10:2] <= 9'h80;
-						else if(r_pcie_rx_len[8:6] != 0)
-							r_pcie_rx_cur_len[10:2] <= {2'b0, r_pcie_rx_len[8:6], 4'b0};
-						else
-							r_pcie_rx_cur_len[10:2] <= {5'b0, r_pcie_rx_len[5:2]};
-					end
-				end
-				3'b001: begin
-					if(r_2nd_dma == 1) begin
-						if(r_pcie_rx_len[5:2] != 0)
-							r_pcie_rx_cur_len[10:2] <= {5'b0, r_pcie_rx_len[5:2]};
-						else if(r_pcie_rx_len[12:2] >= 9'h40)
-							r_pcie_rx_cur_len[10:2] <= 9'h40;
-						else
-							r_pcie_rx_cur_len[10:2] <= {3'b000, r_pcie_rx_len[7:6], 4'b0};
-					end
-					else begin
-						if(r_pcie_rx_len[12:2] >= 9'h40)
-							r_pcie_rx_cur_len[10:2] <= 9'h40;
-						else if(r_pcie_rx_len[7:6] != 0)
-							r_pcie_rx_cur_len[10:2] <= {3'b0, r_pcie_rx_len[7:6], 4'b0};
-						else
-							r_pcie_rx_cur_len[10:2] <= {5'b0, r_pcie_rx_len[5:2]};
-					end
-				end
-				default: begin
-					if(r_2nd_dma == 1) begin
-						if(r_pcie_rx_len[5:2] != 0)
-							r_pcie_rx_cur_len[10:2] <= {5'b0, r_pcie_rx_len[5:2]};
-						else if(r_pcie_rx_len[12:2] >= 9'h20)
-							r_pcie_rx_cur_len[10:2] <= 9'h20;
-						else
-							r_pcie_rx_cur_len[10:2] <= {4'b0000, r_pcie_rx_len[6], 4'b0};
-					end
-					else begin
-						if(r_pcie_rx_len[12:2] >= 9'h20)
-							r_pcie_rx_cur_len[10:2] <= 9'h20;
-						else if(r_pcie_rx_len[6] != 0)
-							r_pcie_rx_cur_len[10:2] <= {4'b0, r_pcie_rx_len[6], 4'b0};
-						else
-							r_pcie_rx_cur_len[10:2] <= {5'b0, r_pcie_rx_len[5:2]};
-					end
-				end
-			endcase
+			r_pcie_rx_cur_len <= f_pcie_rx_cur_len(r_pcie_rx_len, w_pcie_rx_max_len, r_2nd_dma);
 
 			r_pcie_addr <= {pcie_rx_cmd_rd_data[45:2], 2'b0}; //modified
 		end
@@ -314,72 +270,7 @@ begin
 		end
 		S_PCIE_MRD_NEXT: begin
 
-			case(r_pcie_max_read_req_size)
-				3'b011, 3'b100, 3'b101: begin
-					if(r_2nd_dma == 1) begin
-						if(r_pcie_rx_len[12:2] >= 9'h100)
-							r_pcie_rx_cur_len[10:2] <= 9'h100;
-						else
-							r_pcie_rx_cur_len[10:2] <= {1'b0, r_pcie_rx_len[9:6], 4'b0};
-					end
-					else begin
-						if(r_pcie_rx_len[12:2] >= 9'h100)
-							r_pcie_rx_cur_len[10:2] <= 9'h100;
-						else if(r_pcie_rx_len[9:6] != 0)
-							r_pcie_rx_cur_len[10:2] <= {1'b0, r_pcie_rx_len[9:6], 4'b0};
-						else
-							r_pcie_rx_cur_len[10:2] <= {5'b0, r_pcie_rx_len[5:2]};
-					end
-				end
-				3'b010: begin
-					if(r_2nd_dma == 1) begin
-						if(r_pcie_rx_len[12:2] >= 9'h80)
-							r_pcie_rx_cur_len[10:2] <= 9'h80;
-						else
-							r_pcie_rx_cur_len[10:2] <= {2'b00, r_pcie_rx_len[8:6], 4'b0};
-					end
-					else begin
-						if(r_pcie_rx_len[12:2] >= 9'h80)
-							r_pcie_rx_cur_len[10:2] <= 9'h80;
-						else if(r_pcie_rx_len[8:6] != 0)
-							r_pcie_rx_cur_len[10:2] <= {2'b0, r_pcie_rx_len[8:6], 4'b0};
-						else
-							r_pcie_rx_cur_len[10:2] <= {5'b0, r_pcie_rx_len[5:2]};
-					end
-				end
-				3'b001: begin
-					if(r_2nd_dma == 1) begin
-						if(r_pcie_rx_len[12:2] >= 9'h40)
-							r_pcie_rx_cur_len[10:2] <= 9'h40;
-						else
-							r_pcie_rx_cur_len[10:2] <= {3'b000, r_pcie_rx_len[7:6], 4'b0};
-					end
-					else begin
-						if(r_pcie_rx_len[12:2] >= 9'h40)
-							r_pcie_rx_cur_len[10:2] <= 9'h40;
-						else if(r_pcie_rx_len[7:6] != 0)
-							r_pcie_rx_cur_len[10:2] <= {3'b0, r_pcie_rx_len[7:6], 4'b0};
-						else
-							r_pcie_rx_cur_len[10:2] <= {5'b0, r_pcie_rx_len[5:2]};
-					end
-				end
-				default: begin
-					if(r_2nd_dma == 1) begin
-						if(r_pcie_rx_len[12:2] >= 9'h20)
-							r_pcie_rx_cur_len[10:2] <= 9'h20;
-						else
-							r_pcie_rx_cur_len[10:2] <= {4'b0000, r_pcie_rx_len[6], 4'b0};
-					end
-					else begin
-						if(r_pcie_rx_len[12:2] >= 9'h20)
-							r_pcie_rx_cur_len[10:2] <= 9'h20;
-						else if(r_pcie_rx_len[6] != 0)
-							r_pcie_rx_cur_len[10:2] <= {4'b0, r_pcie_rx_len[6], 4'b0};
-						else
-							r_pcie_rx_cur_len[10:2] <= {5'b0, r_pcie_rx_len[5:2]};
-					end
-				end
-			endcase
+			r_pcie_rx_cur_len <= f_pcie_rx_cur_len(r_pcie_rx_len, w_pcie_rx_max_len, r_2nd_dma);
 
 		end
 		default: begin
