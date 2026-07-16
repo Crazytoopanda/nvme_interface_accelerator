@@ -8,3 +8,9 @@
 **/vivado*
 **/xil_ip_pack_*
 **/*.vcd 
+
+**/*_fpga_proj
+**/tmp
+**/.Xil
+
+fpga/*/design/*.txt

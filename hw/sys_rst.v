@@ -80,11 +80,11 @@ localparam	S_IDLE							= 6'b100000;
 reg		[5:0]								cur_state;
 reg		[5:0]								next_state;
 
-(* KEEP = "TRUE", SHIFT_EXTRACT = "NO" *)	reg											r_pcie_perst_n;
-(* KEEP = "TRUE", SHIFT_EXTRACT = "NO" *)	reg											r_pcie_perst_n_sync;
+(* ASYNC_REG = "TRUE", KEEP = "TRUE", SHREG_EXTRACT = "NO" *)	reg											r_pcie_perst_n;
+(* ASYNC_REG = "TRUE", KEEP = "TRUE", SHREG_EXTRACT = "NO" *)	reg											r_pcie_perst_n_sync;
 
-(* KEEP = "TRUE", SHIFT_EXTRACT = "NO" *)	reg											r_pcie_pl_hot_rst;
-(* KEEP = "TRUE", SHIFT_EXTRACT = "NO" *)	reg											r_pcie_pl_hot_rst_sync;
+(* ASYNC_REG = "TRUE", KEEP = "TRUE", SHREG_EXTRACT = "NO" *)	reg											r_pcie_pl_hot_rst;
+(* ASYNC_REG = "TRUE", KEEP = "TRUE", SHREG_EXTRACT = "NO" *)	reg											r_pcie_pl_hot_rst_sync;
 
 reg		[LP_PCIE_RST_CNT_WIDTH-1:0]			r_rst_cnt;
 reg											r_pcie_sys_rst_n;

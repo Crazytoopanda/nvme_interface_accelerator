@@ -109,7 +109,8 @@ wire	[(P_SLOT_TAG_WIDTH+2)+1:0]	w_table_word_addr;
 wire	[2:0]							w_ar_words_per_beat;
 wire	[7:0]							w_ar_beat_bytes;
 wire	[2:0]							w_lane_base;
-wire	[2:0]							w_lane_index;
+wire	[2:0]												w_lane_index;
+	wire	[C_S_AXI_DATA_WIDTH-1:0]			w_aligned_read_data;
 wire								w_aw_packed_dma;
 wire								w_wr_accept;
 wire								w_dma_payload_complete;
@@ -153,6 +154,31 @@ assign w_wr_byte_base = (C_S_AXI_DATA_WIDTH == 128) ? 4'd0 :
 						(C_S_AXI_DATA_WIDTH == 64)  ? {r_wr_addr_low[3], 3'b000} :
 												 {r_wr_addr_low[3:2], 2'b00};
 assign w_dma_payload_complete = (r_dma_payload_valid_next == 16'hFFFF);
+
+	generate
+		if(C_S_AXI_DATA_WIDTH == 128) begin : GEN_READ_ALIGN_128
+			wire [31:0] w_dword = (w_lane_base[1:0] == 2'b00) ? hcmd_table_rd_data_sqe[31:0] :
+			                       (w_lane_base[1:0] == 2'b01) ? hcmd_table_rd_data_sqe[63:32] :
+			                       (w_lane_base[1:0] == 2'b10) ? hcmd_table_rd_data_sqe[95:64] :
+			                                                        hcmd_table_rd_data_sqe[127:96];
+			wire [63:0] w_qword = (r_rd_addr[3] == 1'b0) ? hcmd_table_rd_data_sqe[63:0] :
+			                                           hcmd_table_rd_data_sqe[127:64];
+
+			assign w_aligned_read_data = (r_beat_bytes <= 8'd4) ? {4{w_dword}} :
+			                             (r_beat_bytes == 8'd8) ? {2{w_qword}} :
+			                                                      hcmd_table_rd_data_sqe;
+		end
+		else if(C_S_AXI_DATA_WIDTH == 64) begin : GEN_READ_ALIGN_64
+			wire [31:0] w_dword = (w_lane_base[0] == 1'b0) ? hcmd_table_rd_data_sqe[31:0] :
+			                                                   hcmd_table_rd_data_sqe[63:32];
+
+			assign w_aligned_read_data = (r_beat_bytes <= 8'd4) ? {2{w_dword}} :
+			                                                      hcmd_table_rd_data_sqe;
+		end
+		else begin : GEN_READ_ALIGN_32
+			assign w_aligned_read_data = hcmd_table_rd_data_sqe;
+		end
+	endgenerate
 
 integer w_byte_idx;
 integer w_payload_idx;
@@ -204,7 +230,7 @@ begin
 				r_rd_state <= LP_RD_CAPTURE;
 			end
 			LP_RD_CAPTURE: begin
-				r_rdata <= hcmd_table_rd_data_sqe;
+				r_rdata <= w_aligned_read_data;
 				r_rd_state <= LP_RD_SEND;
 			end
 			LP_RD_SEND: begin

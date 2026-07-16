@@ -419,7 +419,20 @@ module user_top # (
 );
 
 
-wire										pcie_user_rst_n;
+wire											pcie_user_rst_n_raw;
+wire											pcie_user_rst_n;
+
+(* ASYNC_REG = "TRUE", SHREG_EXTRACT = "NO" *) reg [1:0] r_pcie_user_rst_n_sync;
+
+always @ (posedge user_clk_out or negedge pcie_user_rst_n_raw)
+begin
+	if(pcie_user_rst_n_raw == 0)
+		r_pcie_user_rst_n_sync <= 2'b00;
+	else
+		r_pcie_user_rst_n_sync <= {r_pcie_user_rst_n_sync[0], 1'b1};
+end
+
+assign pcie_user_rst_n = r_pcie_user_rst_n_sync[1];
 
 wire										w_pcie_user_logic_rst;
 
@@ -714,7 +727,7 @@ sys_rst_inst0(
 	.pcie_user_logic_rst					(w_pcie_user_logic_rst),
 
 	.pcie_sys_rst_n							(sys_rst_n),
-	.pcie_user_rst_n						(pcie_user_rst_n)
+	.pcie_user_rst_n											(pcie_user_rst_n_raw)
 
 );
 

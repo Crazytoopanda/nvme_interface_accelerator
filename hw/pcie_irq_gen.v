@@ -223,9 +223,17 @@ begin
 	endcase
 end
 
-always @ (*)
+always @ (posedge pcie_user_clk or negedge pcie_user_rst_n)
 begin
-	case(cur_state)
+	if(pcie_user_rst_n == 0) begin
+		r_cfg_interrupt_pending                        <= 0;
+		r_cfg_interrupt_int                            <= 4'b0000;
+		r_cfg_interrupt_msi_int                        <= 0;
+		r_cfg_interrupt_msi_pending_status_data_enable <= 0;
+		r_cfg_interrupt_msi_pending_status             <= 0;
+		r_pcie_irq_done                                <= 0;
+	end else begin
+	case(next_state)
 		S_IDLE: begin
             r_cfg_interrupt_pending                        <= 0;
             r_cfg_interrupt_int                            <= 4'b0000;
@@ -237,9 +245,9 @@ begin
 		S_SEND_MSI: begin
             r_cfg_interrupt_pending                        <= 0;
             r_cfg_interrupt_int                            <= 4'b0000;
-			r_cfg_interrupt_msi_int                        <= {23'b0, r_pcie_irq_vector};
+			r_cfg_interrupt_msi_int                        <= {23'b0, ((cur_state == S_IDLE) ? pcie_irq_vector : r_pcie_irq_vector)};
             r_cfg_interrupt_msi_pending_status_data_enable <= 1;
-            r_cfg_interrupt_msi_pending_status             <= {23'b0, r_pcie_irq_vector};
+            r_cfg_interrupt_msi_pending_status             <= {23'b0, ((cur_state == S_IDLE) ? pcie_irq_vector : r_pcie_irq_vector)};
 			r_pcie_irq_done                                <= 0;
 		end
 		S_SEND_MSI_2: begin
@@ -247,7 +255,7 @@ begin
             r_cfg_interrupt_int                            <= 4'b0000;
 			r_cfg_interrupt_msi_int                        <= 0;
             r_cfg_interrupt_msi_pending_status_data_enable <= 1;
-            r_cfg_interrupt_msi_pending_status             <= {23'b0, r_pcie_irq_vector};
+            r_cfg_interrupt_msi_pending_status             <= {23'b0, ((cur_state == S_IDLE) ? pcie_irq_vector : r_pcie_irq_vector)};
 			r_pcie_irq_done                                <= 0;
 		end
 		S_LEGACY_ASSERT: begin
@@ -299,6 +307,7 @@ begin
 			r_pcie_irq_done                                <= 0;
 		end
 	endcase
+	end
 end
 
 endmodule
