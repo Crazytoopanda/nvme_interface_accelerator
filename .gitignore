@@ -9,7 +9,8 @@
 **/xil_ip_pack_*
 **/*.vcd 
 
-**/*_fpga_proj
+**/nvme_plddr64g_*
+!**/nvme_plddr64g_*.tcl
 **/tmp
 **/.Xil
 

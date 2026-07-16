@@ -58,6 +58,7 @@
 
 #include <string.h>
 
+#include "../kernel_config.h"
 #include "xil_printf.h"
 #include "debug.h"
 #include "io_access.h"
@@ -81,6 +82,12 @@ volatile unsigned int g_nvmeWaitCcObservedDisabled;
 
 static unsigned long long nvme_main_now_ns(void)
 {
+#if NVME_KERNEL_MICROBLAZE
+	static volatile unsigned long long softNowNs;
+
+	softNowNs += NVME_MICROBLAZE_SOFT_TIME_STEP_NS;
+	return softNowNs;
+#else
 	unsigned long long cnt;
 	unsigned long long freq;
 	unsigned long long sec;
@@ -93,7 +100,9 @@ static unsigned long long nvme_main_now_ns(void)
 
 	sec = cnt / freq;
 	rem = cnt % freq;
+
 	return (sec * 1000000000ULL) + ((rem * 1000000000ULL) / freq);
+#endif
 }
 
 static void clear_nvme_status_for_rearm(void)
@@ -112,7 +121,7 @@ void nvme_main()
 {
 	unsigned int rstCnt = 0;
 	unsigned long long waitResetStartNs = 0;
-#if NVME_BOOT_ERASE_BYTES != 0
+#if NVME_BOOT_ERASE_BYTES != 0 && NVME_CPU_CAN_ACCESS_BACKING_DRAM
 	unsigned char *p_storage = (unsigned char *)DATA_BUFFER_BASE_ADDR;
 	memset(p_storage, 0xFF, NVME_BOOT_ERASE_BYTES);
 #endif

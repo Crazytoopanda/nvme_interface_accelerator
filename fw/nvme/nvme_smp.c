@@ -40,7 +40,9 @@ static void nvme_smp_barrier(void)
 
 void nvme_smp_mask_worker_exceptions(void)
 {
-#if defined(__aarch64__)
+#if NVME_KERNEL_MICROBLAZE
+	return;
+#elif defined(__aarch64__)
 	__asm__ volatile("msr daifset, #0xf" ::: "memory");
 #else
 	__asm__ volatile("cpsid if" ::: "memory");
@@ -116,6 +118,9 @@ void nvme_smp_worker_entry(unsigned int coreId)
 
 unsigned int nvme_smp_get_core_id(void)
 {
+#if NVME_KERNEL_MICROBLAZE
+	return 0;
+#else
 	unsigned long mpidr;
 
 #if defined(__aarch64__)
@@ -128,6 +133,7 @@ unsigned int nvme_smp_get_core_id(void)
 		return (unsigned int)(mpidr & 0x3);
 
 	return (unsigned int)((mpidr >> 8) & 0x3);
+#endif
 }
 
 static unsigned int nvme_smp_queue_is_full(NVME_SMP_CMD_QUEUE *queue)
@@ -288,6 +294,7 @@ unsigned int nvme_smp_poll_core(unsigned int coreId)
 
 void nvme_smp_start_worker(unsigned int coreId)
 {
+#if NVME_KERNEL_HAS_SMP_BOOT
 #if defined(__aarch64__)
 	register unsigned long coreReg __asm__("x0") = coreId;
 
@@ -309,21 +316,13 @@ void nvme_smp_start_worker(unsigned int coreId)
 		:
 		: "x1", "x2", "memory");
 #else
-	__asm__ volatile(
-		"cmp r0, #3\n"
-		"bls 1f\n"
-		"mov r0, #0\n"
-		"1:\n"
-		"ldr r1, =g_nvmeSmpWorkerStack\n"
-		"add r2, r0, #1\n"
-		"lsl r2, r2, #14\n"
-		"add r1, r1, r2\n"
-		"bic r1, r1, #0xf\n"
-		"mov sp, r1\n"
-		"b nvme_smp_worker_entry\n"
-		:
-		:
-		: "r0", "r1", "r2", "memory");
+#error "NVME SMP worker startup is only implemented for Cortex-A53 AArch64"
+#endif
+#else
+	(void)coreId;
+	while(1)
+	{
+	}
 #endif
 
 	__builtin_unreachable();

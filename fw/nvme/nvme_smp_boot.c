@@ -4,6 +4,7 @@
 #include "nvme_smp_boot.h"
 #include "ssd_config.h"
 
+#if NVME_KERNEL_HAS_SMP_BOOT
 #define ZYNQMP_APU_RVBARADDR_BASE	0xFD5C0040ULL
 #define ZYNQMP_APU_RVBARADDR_STRIDE	0x8ULL
 #define ZYNQMP_APU_PWRCTL_ADDR		0xFD5C0090ULL
@@ -187,3 +188,11 @@ void nvme_smp_boot_configured_worker(void)
 	nvme_smp_signal_event();
 #endif
 }
+
+#else
+
+void nvme_smp_boot_configured_worker(void)
+{
+}
+
+#endif /* NVME_KERNEL_HAS_SMP_BOOT */

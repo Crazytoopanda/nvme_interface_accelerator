@@ -60,12 +60,21 @@
 
 
 
+#include "kernel_config.h"
 #include "xil_cache.h"
 #include "xil_exception.h"
+#if NVME_KERNEL_HAS_A53_MMU_TABLE
 #include "xil_mmu.h"
+#endif
+#if NVME_USE_GIC_INTERRUPTS
 #include "xparameters_ps.h"
 #include "xscugic_hw.h"
 #include "xscugic.h"
+#endif
+#if NVME_USE_AXI_INTC_INTERRUPTS
+#include "xparameters.h"
+#include "xintc.h"
+#endif
 #include "xil_printf.h"
 #include "xil_types.h"
 #include "nvme/debug.h"
@@ -77,67 +86,150 @@
 
 #include "memory_map.h"
 
-#ifndef NVME_USE_STATIC_MMU_TABLE
-#define NVME_USE_STATIC_MMU_TABLE 1
+#if NVME_USE_AXI_INTC_INTERRUPTS
+#ifndef NVME_AXI_INTC_DEVICE_ID
+#if defined(XPAR_MICROBLAZE_0_AXI_INTC_DEVICE_ID)
+#define NVME_AXI_INTC_DEVICE_ID XPAR_MICROBLAZE_0_AXI_INTC_DEVICE_ID
+#elif defined(XPAR_INTC_0_DEVICE_ID)
+#define NVME_AXI_INTC_DEVICE_ID XPAR_INTC_0_DEVICE_ID
+#else
+#define NVME_AXI_INTC_DEVICE_ID 0
+#endif
 #endif
 
+#ifndef NVME_DEV_IRQ_INTR_ID
+#if defined(XPAR_MICROBLAZE_0_AXI_INTC_NVME_CTRL_0_DEV_IRQ_ASSERT_INTR)
+#define NVME_DEV_IRQ_INTR_ID XPAR_MICROBLAZE_0_AXI_INTC_NVME_CTRL_0_DEV_IRQ_ASSERT_INTR
+#else
+#define NVME_DEV_IRQ_INTR_ID 0
+#endif
+#endif
+#endif
 
+#if NVME_USE_GIC_INTERRUPTS
 XScuGic GicInstance;
+#endif
+#if NVME_USE_AXI_INTC_INTERRUPTS
+XIntc AxiIntcInstance;
+
+static void dev_irq_xintc_handler(void *callbackRef)
+{
+	(void)callbackRef;
+	dev_irq_handler();
+}
+#endif
+
+#if NVME_INIT_ECC_MEMORY
+#ifndef NVME_ECC_INIT_BASE_ADDR
+#define NVME_ECC_INIT_BASE_ADDR DRAM_START_ADDR
+#endif
+#ifndef NVME_ECC_INIT_END_ADDR
+#define NVME_ECC_INIT_END_ADDR DRAM_END_ADDR
+#endif
+#ifndef NVME_ECC_INIT_CHUNK_SIZE
+#define NVME_ECC_INIT_CHUNK_SIZE (256ULL * 1024ULL * 1024ULL)
+#endif
+
+#if NVME_KERNEL_CORTEX_A53
+static void a53_dcache_clean_range(UINTPTR addr, UINTPTR size)
+{
+	const UINTPTR cacheLineSize = 64U;
+	UINTPTR a = addr & ~(cacheLineSize - 1U);
+	UINTPTR endAddr = (addr + size + cacheLineSize - 1U) & ~(cacheLineSize - 1U);
+
+	for(; a < endAddr; a += cacheLineSize)
+		__asm__ volatile("dc cvac, %0" :: "r"(a) : "memory");
+	__asm__ volatile("dsb sy" ::: "memory");
+}
+#endif
 
 static void flush_ecc_mem_range(UINTPTR addr, UINTPTR size)
 {
-	const UINTPTR cacheLineSize = 64;
-	const UINTPTR flushChunkSize = 256ULL * 1024ULL * 1024ULL;
-	UINTPTR alignedAddr = addr & ~(cacheLineSize - 1U);
-	UINTPTR endAddr = (addr + size + cacheLineSize - 1U) & ~(cacheLineSize - 1U);
+	const UINTPTR flushChunkSize = (UINTPTR)NVME_ECC_INIT_CHUNK_SIZE;
+	UINTPTR endAddr = addr + size;
 	UINTPTR chunkBase;
 
-	for (chunkBase = alignedAddr; chunkBase < endAddr; chunkBase += flushChunkSize) {
+#if NVME_KERNEL_CORTEX_A53
+	const UINTPTR cacheLineSize = 64U;
+	UINTPTR alignedAddr = addr & ~(cacheLineSize - 1U);
+
+	endAddr = (endAddr + cacheLineSize - 1U) & ~(cacheLineSize - 1U);
+	for(chunkBase = alignedAddr; chunkBase < endAddr; chunkBase += flushChunkSize)
+	{
 		UINTPTR chunkEnd = chunkBase + flushChunkSize;
 		UINTPTR a;
 
-		if (chunkEnd > endAddr)
+		if(chunkEnd > endAddr)
 			chunkEnd = endAddr;
 
 		__asm__ volatile("dsb sy" ::: "memory");
-		for (a = chunkBase; a < chunkEnd; a += cacheLineSize)
+		for(a = chunkBase; a < chunkEnd; a += cacheLineSize)
 			__asm__ volatile("dc zva, %0" :: "r"(a) : "memory");
 		__asm__ volatile("dsb sy" ::: "memory");
 
-		Xil_DCacheFlushRange(chunkBase, chunkEnd - chunkBase);
+		a53_dcache_clean_range(chunkBase, chunkEnd - chunkBase);
 		__asm__ volatile("dsb sy" ::: "memory");
 	}
+#else
+	const UINTPTR writeStride = sizeof(unsigned long long);
+	UINTPTR alignedAddr = addr & ~(writeStride - 1U);
+
+	endAddr = (endAddr + writeStride - 1U) & ~(writeStride - 1U);
+	for(chunkBase = alignedAddr; chunkBase < endAddr; chunkBase += flushChunkSize)
+	{
+		UINTPTR chunkEnd = chunkBase + flushChunkSize;
+		UINTPTR a;
+
+		if(chunkEnd > endAddr)
+			chunkEnd = endAddr;
+
+		for(a = chunkBase; a < chunkEnd; a += writeStride)
+			*((volatile unsigned long long *)a) = 0ULL;
+	}
+#endif
 }
 
 static void init_ecc_memory(void)
 {
-	const UINTPTR eccInitBase = (UINTPTR)DRAM_START_ADDR;
-	const UINTPTR eccInitSize = (UINTPTR)(DRAM_END_ADDR - DRAM_START_ADDR + 1ULL);
+	const UINTPTR eccInitBase = (UINTPTR)NVME_ECC_INIT_BASE_ADDR;
+	const UINTPTR eccInitEnd = (UINTPTR)NVME_ECC_INIT_END_ADDR;
+	const UINTPTR eccInitSize = eccInitEnd - eccInitBase + 1U;
 
-	xil_printf("Initialize ECC memory...\r\n");
+	xil_printf("Initialize ECC memory: %08X_%08X - %08X_%08X\r\n",
+			(unsigned int)(eccInitBase >> 32), (unsigned int)eccInitBase,
+			(unsigned int)(eccInitEnd >> 32), (unsigned int)eccInitEnd);
 	flush_ecc_mem_range(eccInitBase, eccInitSize);
 	xil_printf("ECC memory initialized.\r\n");
 }
+#endif
 
 int main()
 {
-#if !NVME_USE_STATIC_MMU_TABLE
+#if NVME_KERNEL_HAS_A53_MMU_TABLE && !NVME_USE_STATIC_MMU_TABLE
 	unsigned int u;
 #endif
+#if NVME_KERNEL_HAS_SMP_BOOT
 	unsigned int coreId;
-
+#endif
+#if NVME_USE_GIC_INTERRUPTS
 	XScuGic_Config *IntcConfig;
+#endif
+#if NVME_USE_AXI_INTC_INTERRUPTS
+	int intcStatus;
+#endif
 
+#if NVME_KERNEL_HAS_SMP_BOOT
 	coreId = nvme_smp_get_core_id();
 	if(coreId != 0)
 		nvme_smp_start_worker(coreId);
+#endif
 
 	Xil_ICacheDisable();
 	Xil_DCacheDisable();
 
 	// Paging table set
 	#define MMU_MB (1024ULL * 1024ULL)
-#if !NVME_USE_STATIC_MMU_TABLE
+#if NVME_KERNEL_HAS_A53_MMU_TABLE && !NVME_USE_STATIC_MMU_TABLE
 	for (u = 0; u < 4096; u+=2)
 	{
 		if (u < 0x2)
@@ -163,14 +255,24 @@ int main()
 #endif
 
 	Xil_ICacheEnable();
-	Xil_DCacheEnable();
-	xil_printf("[!] MMU has been enabled.\r\n");
+#if NVME_INIT_ECC_MEMORY && NVME_KERNEL_MICROBLAZE
 	init_ecc_memory();
+#endif
+	Xil_DCacheEnable();
+#if NVME_KERNEL_HAS_A53_MMU_TABLE
+	xil_printf("[!] MMU has been enabled.\r\n");
+#else
+	xil_printf("[!] MicroBlaze kernel init: single-core, no A53 MMU.\r\n");
+#endif
+#if NVME_INIT_ECC_MEMORY && !NVME_KERNEL_MICROBLAZE
+	init_ecc_memory();
+#endif
 	
 	xil_printf("\r\n Hello DaisyPlus OpenSSD !!! \r\n");
 
 	Xil_ExceptionInit();
 
+#if NVME_USE_GIC_INTERRUPTS
 	IntcConfig = XScuGic_LookupConfig(XPAR_SCUGIC_SINGLE_DEVICE_ID);
 	XScuGic_CfgInitialize(&GicInstance, IntcConfig, IntcConfig->CpuBaseAddress);
 	Xil_ExceptionRegisterHandler(XIL_EXCEPTION_ID_INT,
@@ -186,6 +288,35 @@ int main()
 	// Enable interrupts in the Processor.
 	Xil_ExceptionEnableMask(XIL_EXCEPTION_IRQ);
 	Xil_ExceptionEnable();
+#endif
+#if NVME_USE_AXI_INTC_INTERRUPTS
+	intcStatus = XIntc_Initialize(&AxiIntcInstance, NVME_AXI_INTC_DEVICE_ID);
+	if(intcStatus != XST_SUCCESS)
+	{
+		xil_printf("AXI INTC init failed: %d\r\n", intcStatus);
+	}
+	else
+	{
+		intcStatus = XIntc_Connect(&AxiIntcInstance, NVME_DEV_IRQ_INTR_ID,
+						(XInterruptHandler)dev_irq_xintc_handler,
+						(void *)0);
+		if(intcStatus != XST_SUCCESS)
+		{
+			xil_printf("AXI INTC connect failed: %d\r\n", intcStatus);
+		}
+		else
+		{
+			XIntc_Start(&AxiIntcInstance, XIN_REAL_MODE);
+			XIntc_Enable(&AxiIntcInstance, NVME_DEV_IRQ_INTR_ID);
+			Xil_ExceptionRegisterHandler(XIL_EXCEPTION_ID_INT,
+							(Xil_ExceptionHandler)XIntc_InterruptHandler,
+							&AxiIntcInstance);
+			Xil_ExceptionEnable();
+			xil_printf("AXI INTC enabled, dev_irq intr id %d\r\n",
+				   NVME_DEV_IRQ_INTR_ID);
+		}
+	}
+#endif
 
 	dev_irq_init();
 

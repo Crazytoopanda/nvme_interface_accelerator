@@ -3,6 +3,9 @@
 * Copyright (c) 2022 - 2023 Advanced Micro Devices, Inc. All Rights Reserved.
 * SPDX-License-Identifier: MIT
 ******************************************************************************/
+#include "../../kernel_config.h"
+#if NVME_KERNEL_HAS_A53_MMU_TABLE
+
 /*****************************************************************************/
 /**
 * @file translation_table.s
@@ -295,3 +298,5 @@ MMUTableL2:
 /**
 * @} End of "addtogroup a53_64_boot_code".
 */
+
+#endif /* NVME_KERNEL_HAS_A53_MMU_TABLE */

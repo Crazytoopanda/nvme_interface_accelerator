@@ -1,5 +1,6 @@
 #include <stdint.h>
 
+#include "../kernel_config.h"
 #include "host_lld.h"
 #include "nvme.h"
 #include "nvme_smp.h"
@@ -10,7 +11,9 @@
 #define SSD_MODEL_CMD_SLOT_COUNT		(1U << P_SLOT_TAG_WIDTH)
 #define SSD_MODEL_QUEUE_DEPTH			SSD_MODEL_CMD_SLOT_COUNT
 #define SSD_MODEL_QUEUE_RING_SIZE		(SSD_MODEL_QUEUE_DEPTH + 1U)
+#ifndef SSD_MODEL_BUFFER_RELEASE_SLOTS
 #define SSD_MODEL_BUFFER_RELEASE_SLOTS		(SSD_MODEL_CMD_SLOT_COUNT * 64U)
+#endif
 #define SSD_MODEL_PARTITIONS			SSD_PARTITIONS
 #define SSD_MODEL_PART_NAND_CHANNELS		(NAND_CHANNELS / SSD_MODEL_PARTITIONS)
 #define SSD_MODEL_NUM_LANES			(NAND_CHANNELS * LUNS_PER_NAND_CH)
@@ -33,18 +36,19 @@
 						 SSD_MODEL_PAGES_PER_LINE)
 #define SSD_MODEL_PHYSICAL_PAGES		(SSD_MODEL_PART_PHYSICAL_PAGES * \
 						 SSD_MODEL_PARTITIONS)
+#if SSD_MODEL_USE_FULL_MAPPING
 #define SSD_MODEL_L2P_ADDR			NVME_MANAGEMENT_START_ADDR
 #define SSD_MODEL_P2L_ADDR			(SSD_MODEL_L2P_ADDR + \
 						 (SSD_MODEL_LOGICAL_PAGES * 4ULL))
-#define SSD_MODEL_CH_CREDIT_ENTRIES		(1024U * 96U)
-#define SSD_MODEL_CH_UNIT_TIME_NS		4000ULL
-#define SSD_MODEL_CH_UNIT_XFER_BYTES		128ULL
-#define SSD_MODEL_CH_UNIT_CREDITS		1U
 #define SSD_MODEL_CH_CREDIT_ADDR		(SSD_MODEL_P2L_ADDR + \
 						 (SSD_MODEL_PHYSICAL_PAGES * 4ULL))
 #define SSD_MODEL_META_END_ADDR			(SSD_MODEL_CH_CREDIT_ADDR + \
 						 ((NAND_CHANNELS * 1ULL) * \
 						  SSD_MODEL_CH_CREDIT_ENTRIES * 2ULL))
+#endif
+#define SSD_MODEL_CH_UNIT_TIME_NS		4000ULL
+#define SSD_MODEL_CH_UNIT_XFER_BYTES		128ULL
+#define SSD_MODEL_CH_UNIT_CREDITS		1U
 
 #if (NAND_CHANNELS % SSD_MODEL_PARTITIONS) != 0
 #error "NAND_CHANNELS must be divisible by SSD_PARTITIONS"
@@ -54,7 +58,7 @@
 #error "SSD model physical pages must cover advertised logical pages"
 #endif
 
-#if SSD_MODEL_META_END_ADDR > NVME_MANAGEMENT_END_ADDR
+#if SSD_MODEL_USE_FULL_MAPPING && SSD_MODEL_META_END_ADDR > NVME_MANAGEMENT_END_ADDR
 #error "NVMe management DRAM is too small for SSD model metadata"
 #endif
 
@@ -152,11 +156,20 @@ static SSD_MODEL_WRITE_POINTER g_userWritePointer[SSD_MODEL_PARTITIONS];
 static SSD_MODEL_WRITE_POINTER g_gcWritePointer[SSD_MODEL_PARTITIONS];
 static unsigned int g_writeCredits[SSD_MODEL_PARTITIONS];
 static unsigned int g_creditsToRefill[SSD_MODEL_PARTITIONS];
+#if !SSD_MODEL_USE_FULL_MAPPING
+static volatile unsigned short g_chCreditStorage[NAND_CHANNELS][SSD_MODEL_CH_CREDIT_ENTRIES];
+#endif
 volatile unsigned int g_ssdModelDebug[16];
 extern volatile NVME_CONTEXT g_nvmeTask;
 
 static inline unsigned long long ssd_model_now_ns(void)
 {
+#if NVME_KERNEL_MICROBLAZE
+	static volatile unsigned long long softNowNs;
+
+	softNowNs += NVME_MICROBLAZE_SOFT_TIME_STEP_NS;
+	return softNowNs;
+#else
 	unsigned long long cnt;
 	unsigned long long freq;
 	unsigned long long sec;
@@ -164,7 +177,6 @@ static inline unsigned long long ssd_model_now_ns(void)
 
 	__asm__ volatile("mrs %0, cntvct_el0" : "=r"(cnt));
 	__asm__ volatile("mrs %0, cntfrq_el0" : "=r"(freq));
-
 	if(freq == 0)
 		return 0;
 
@@ -172,6 +184,7 @@ static inline unsigned long long ssd_model_now_ns(void)
 	rem = cnt % freq;
 
 	return (sec * 1000000000ULL) + ((rem * 1000000000ULL) / freq);
+#endif
 }
 
 static void ssd_model_lock(void)
@@ -402,9 +415,13 @@ static inline unsigned int ssd_model_ppa_local_lane(unsigned int ppa)
 
 static inline volatile unsigned short *ssd_model_ch_credits(unsigned int ch)
 {
+#if SSD_MODEL_USE_FULL_MAPPING
 	return (volatile unsigned short *)(unsigned long)
 	       (SSD_MODEL_CH_CREDIT_ADDR +
 		((unsigned long long)ch * SSD_MODEL_CH_CREDIT_ENTRIES * 2ULL));
+#else
+	return g_chCreditStorage[ch];
+#endif
 }
 
 static unsigned int ssd_model_ch_max_credits(void)
@@ -649,6 +666,7 @@ static unsigned long long ssd_model_advance_write_buffer(unsigned long long star
 	       ssd_model_xfer_ns(bytes, PCIE_BANDWIDTH);
 }
 
+#if SSD_MODEL_USE_FULL_MAPPING
 static inline unsigned int *ssd_model_l2p(void)
 {
 	return (unsigned int *)(unsigned long)SSD_MODEL_L2P_ADDR;
@@ -658,10 +676,28 @@ static inline unsigned int *ssd_model_p2l(void)
 {
 	return (unsigned int *)(unsigned long)SSD_MODEL_P2L_ADDR;
 }
+#endif
 
 static unsigned int ssd_model_lpn_from_addr(unsigned long long devAddr)
 {
 	return (unsigned int)((devAddr - DATA_BUFFER_BASE_ADDR) / BYTES_PER_NVME_BLOCK);
+}
+
+static unsigned int ssd_model_lookup_lpn(unsigned int lpn)
+{
+#if SSD_MODEL_USE_FULL_MAPPING
+	unsigned int *l2p = ssd_model_l2p();
+
+	if(lpn >= SSD_MODEL_LOGICAL_PAGES)
+		return SSD_MODEL_INVALID_PAGE;
+
+	return l2p[lpn];
+#else
+	if(lpn >= SSD_MODEL_LOGICAL_PAGES || lpn >= SSD_MODEL_PHYSICAL_PAGES)
+		return SSD_MODEL_INVALID_PAGE;
+
+	return lpn;
+#endif
 }
 
 static unsigned int ssd_model_ppa_lane(unsigned int ppa)
@@ -819,6 +855,7 @@ static unsigned int ssd_model_program_ready_ppa(unsigned int ppa)
 
 static void ssd_model_invalidate_lpn(unsigned int lpn)
 {
+#if SSD_MODEL_USE_FULL_MAPPING
 	unsigned int *l2p = ssd_model_l2p();
 	unsigned int *p2l = ssd_model_p2l();
 	unsigned int oldPpa;
@@ -840,12 +877,16 @@ static void ssd_model_invalidate_lpn(unsigned int lpn)
 
 	p2l[oldPpa] = SSD_MODEL_INVALID_PAGE;
 	l2p[lpn] = SSD_MODEL_INVALID_PAGE;
+#else
+	(void)lpn;
+#endif
 }
 
 static unsigned int ssd_model_allocate_ppa(unsigned int part,
 					  unsigned int lpn,
 					  unsigned int gcIo)
 {
+#if SSD_MODEL_USE_FULL_MAPPING
 	unsigned int *l2p = ssd_model_l2p();
 	unsigned int *p2l = ssd_model_p2l();
 	SSD_MODEL_WRITE_POINTER *wp = gcIo ? &g_gcWritePointer[part] :
@@ -870,6 +911,14 @@ static unsigned int ssd_model_allocate_ppa(unsigned int part,
 	g_lineValidPages[slot]++;
 	ssd_model_advance_write_pointer(part, wp);
 	return ppa;
+#else
+	(void)gcIo;
+	if(part >= SSD_MODEL_PARTITIONS || lpn >= SSD_MODEL_LOGICAL_PAGES ||
+	   lpn >= SSD_MODEL_PHYSICAL_PAGES)
+		return SSD_MODEL_INVALID_PAGE;
+
+	return lpn;
+#endif
 }
 
 static unsigned int ssd_model_select_gc_victim(unsigned int part,
@@ -901,9 +950,10 @@ static unsigned long long ssd_model_refill_write_credit(unsigned int part,
 						       unsigned long long startNs);
 
 static unsigned long long ssd_model_reclaim_one_line(unsigned int part,
-						     unsigned long long startNs,
-						     unsigned int force)
+					     unsigned long long startNs,
+					     unsigned int force)
 {
+#if SSD_MODEL_USE_FULL_MAPPING
 	unsigned int *l2p = ssd_model_l2p();
 	unsigned int *p2l = ssd_model_p2l();
 	unsigned int victim = ssd_model_select_gc_victim(part, force);
@@ -933,7 +983,7 @@ static unsigned long long ssd_model_reclaim_one_line(unsigned int part,
 		}
 
 		readDoneNs = ssd_model_schedule_nand_read_ppa(oldPpa, startNs,
-							   BYTES_PER_NVME_BLOCK);
+						   BYTES_PER_NVME_BLOCK);
 		latestNs = ssd_model_max_ull(latestNs, readDoneNs);
 		newPpa = ssd_model_allocate_ppa(part, lpn, 1);
 		if(newPpa == SSD_MODEL_INVALID_PAGE)
@@ -960,6 +1010,11 @@ static unsigned long long ssd_model_reclaim_one_line(unsigned int part,
 	g_freeLineCount[part]++;
 	g_ssdModelDebug[15]++;
 	return latestNs + NAND_ERASE_LATENCY;
+#else
+	(void)part;
+	(void)force;
+	return startNs;
+#endif
 }
 
 static unsigned long long ssd_model_foreground_gc(unsigned int part,
@@ -986,16 +1041,19 @@ static unsigned long long ssd_model_refill_write_credit(unsigned int part,
 
 static void ssd_model_ftl_reset(void)
 {
-	unsigned int *l2p = ssd_model_l2p();
-	unsigned int *p2l = ssd_model_p2l();
 	unsigned int idx;
 	unsigned int part;
+
+#if SSD_MODEL_USE_FULL_MAPPING
+	unsigned int *l2p = ssd_model_l2p();
+	unsigned int *p2l = ssd_model_p2l();
 
 	for(idx = 0; idx < SSD_MODEL_LOGICAL_PAGES; idx++)
 		l2p[idx] = SSD_MODEL_INVALID_PAGE;
 
 	for(idx = 0; idx < SSD_MODEL_PHYSICAL_PAGES; idx++)
 		p2l[idx] = SSD_MODEL_INVALID_PAGE;
+#endif
 
 	for(idx = 0; idx < SSD_MODEL_TOTAL_LINE_COUNT; idx++)
 	{
@@ -1017,12 +1075,17 @@ static void ssd_model_ftl_reset(void)
 static void ssd_model_submit_write_rx_dma(SSD_MODEL_IO *io)
 {
 	unsigned int dmaIndex;
+	unsigned int autoCompletion;
 	unsigned long long devAddr = io->devAddr;
 
 	for(dmaIndex = 0; dmaIndex < io->requestedNvmeBlock; dmaIndex++)
 	{
-		set_auto_rx_dma(io->cmdSlotTag, dmaIndex, devAddr,
-				NVME_COMMAND_AUTO_COMPLETION_OFF);
+		autoCompletion = NVME_COMMAND_AUTO_COMPLETION_OFF;
+#if NVME_FAST_WRITE_AUTO_CPL
+		if(dmaIndex == (io->requestedNvmeBlock - 1))
+			autoCompletion = NVME_COMMAND_AUTO_COMPLETION_ON;
+#endif
+		set_auto_rx_dma(io->cmdSlotTag, dmaIndex, devAddr, autoCompletion);
 		devAddr += BYTES_PER_NVME_BLOCK;
 	}
 
@@ -1076,7 +1139,6 @@ static void ssd_model_schedule_io(SSD_MODEL_IO *io)
 
 	if(io->op == SSD_MODEL_OP_READ)
 	{
-		unsigned int *l2p = ssd_model_l2p();
 		unsigned int startLpn = ssd_model_lpn_from_addr(io->devAddr);
 		unsigned int endLpn = startLpn + io->requestedNvmeBlock - 1U;
 		unsigned long long readStartNs;
@@ -1101,7 +1163,7 @@ static void ssd_model_schedule_io(SSD_MODEL_IO *io)
 				if(lpn >= SSD_MODEL_LOGICAL_PAGES)
 					break;
 
-				ppa = l2p[lpn];
+				ppa = ssd_model_lookup_lpn(lpn);
 				if(ppa == SSD_MODEL_INVALID_PAGE || ppa >= SSD_MODEL_PHYSICAL_PAGES)
 				{
 					latestNs = ssd_model_max_ull(latestNs, readStartNs);
@@ -1113,7 +1175,7 @@ static void ssd_model_schedule_io(SSD_MODEL_IO *io)
 				nextLpn = lpn + SSD_MODEL_PARTITIONS;
 				while(nextLpn <= endLpn && nextLpn < SSD_MODEL_LOGICAL_PAGES)
 				{
-					unsigned int nextPpa = l2p[nextLpn];
+					unsigned int nextPpa = ssd_model_lookup_lpn(nextLpn);
 
 					if(nextPpa == SSD_MODEL_INVALID_PAGE ||
 					   nextPpa >= SSD_MODEL_PHYSICAL_PAGES ||
@@ -1561,6 +1623,13 @@ static unsigned int ssd_model_submit(unsigned char op,
 #ifdef DISABLE_NVMEVIRT
 	g_ssdModelDebug[11]++;
 	io->modelReady = 1;
+#if NVME_FAST_WRITE_AUTO_CPL
+	if(op == SSD_MODEL_OP_WRITE)
+	{
+		io->valid = 0;
+		return 1;
+	}
+#endif
 	ssd_model_try_complete(io);
 	return 1;
 #endif

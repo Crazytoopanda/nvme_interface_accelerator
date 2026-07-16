@@ -51,6 +51,7 @@
 //////////////////////////////////////////////////////////////////////////////////
 
 #include "stdio.h"
+#include "../kernel_config.h"
 #include "xil_exception.h"
 #include "xil_cache.h"
 #include "xil_printf.h"
@@ -59,6 +60,12 @@
 
 #include "nvme.h"
 #include "host_lld.h"
+
+#if NVME_ADMIN_TRACE
+#define HOST_TRACE(FORMAT, ...) xil_printf(FORMAT, ## __VA_ARGS__)
+#else
+#define HOST_TRACE(FORMAT, ...)
+#endif
 extern volatile NVME_CONTEXT g_nvmeTask;
 extern volatile unsigned int g_nvmeWaitCcObservedDisabled;
 HOST_DMA_STATUS g_hostDmaStatus;
@@ -67,15 +74,30 @@ HOST_DMA_ASSIST_STATUS g_hostDmaAssistStatus;
 static unsigned int g_autoDmaTxCredit;
 static unsigned int g_autoDmaRxCredit;
 
+static inline void host_lld_write_barrier(void)
+{
+#if NVME_KERNEL_CORTEX_A53
+	__asm__ volatile("dsb sy" ::: "memory");
+#else
+	__asm__ volatile("" ::: "memory");
+#endif
+}
+
 static inline void invalidate_sqe_cache_line(unsigned long long addr)
 {
+#if NVME_KERNEL_CORTEX_A53
 	__asm__ volatile("dc ivac, %0" :: "r" ((unsigned long)addr) : "memory");
 	__asm__ volatile("dsb sy" ::: "memory");
+#else
+	Xil_DCacheInvalidateRange((UINTPTR)addr, NVME_CMD_SQE_SIZE);
+	host_lld_write_barrier();
+#endif
 }
 
 static inline void write_packed_auto_dma(unsigned int cmdSlotTag, unsigned int dmaCtrl,
 								 unsigned long long devAddr)
 {
+#if NVME_KERNEL_CORTEX_A53
 	unsigned __int128 payload;
 
 	payload = ((unsigned __int128)cmdSlotTag << 96) |
@@ -83,7 +105,23 @@ static inline void write_packed_auto_dma(unsigned int cmdSlotTag, unsigned int d
 			  ((unsigned __int128)(unsigned int)(devAddr >> 32) << 32) |
 			  (unsigned int)(devAddr & 0xFFFFFFFFULL);
 	*(volatile unsigned __int128 *)(unsigned long)HOST_DMA_PACKED_SUBMIT_ADDR = payload;
-	__asm__ volatile("dsb sy" ::: "memory");
+#else
+	HOST_DMA_CMD_FIFO_REG hostDmaReg = {0};
+
+	hostDmaReg.devAddr = (unsigned int)(devAddr & 0xFFFFFFFFULL);
+	hostDmaReg.devAddrH = (unsigned int)((devAddr >> 32) & 0xFFFFFFFFULL);
+	hostDmaReg.dword[3] = dmaCtrl;
+	hostDmaReg.cmdSlotTag = cmdSlotTag;
+
+	IO_WRITE32(HOST_DMA_CMD_FIFO_REG_ADDR, hostDmaReg.dword[0]);
+	IO_WRITE32((HOST_DMA_CMD_FIFO_REG_ADDR + 20), hostDmaReg.dword[5]);
+	IO_WRITE32((HOST_DMA_CMD_FIFO_REG_ADDR + 4), hostDmaReg.dword[1]);
+	IO_WRITE32((HOST_DMA_CMD_FIFO_REG_ADDR + 8), hostDmaReg.dword[2]);
+	IO_WRITE32((HOST_DMA_CMD_FIFO_REG_ADDR + 12), hostDmaReg.dword[3]);
+	IO_WRITE32((HOST_DMA_CMD_FIFO_REG_ADDR + 16), hostDmaReg.dword[4]);
+	IO_WRITE32(HOST_DMA_CMD_FIFO_TRIG_ADDR, 1);
+#endif
+	host_lld_write_barrier();
 }
 
 static unsigned int get_dma_fifo_credit(unsigned char head, unsigned char tail)
@@ -141,8 +179,16 @@ static void read_nvme_sqe(unsigned int cmdSlotTag, unsigned int *cmdDword)
 	unsigned long long addr;
 
 	addr = NVME_CMD_SQE_WINDOW_ADDR + ((unsigned long long)cmdSlotTag * NVME_CMD_SQE_SIZE);
+#if NVME_KERNEL_CORTEX_A53
 	invalidate_sqe_cache_line(addr);
 	__builtin_memcpy(cmdDword, (const void *)(unsigned long)addr, NVME_CMD_SQE_SIZE);
+#else
+	unsigned int idx;
+
+	for(idx = 0; idx < (NVME_CMD_SQE_SIZE / sizeof(unsigned int)); idx++)
+		cmdDword[idx] = IO_READ32(addr + ((unsigned long long)idx * sizeof(unsigned int)));
+	host_lld_write_barrier();
+#endif
 }
 
 void dev_irq_init()
@@ -292,6 +338,14 @@ unsigned int get_nvme_cmd(unsigned short *qID, unsigned short *cmdSlotTag, unsig
 		*cmdSeqNum = nvmeReg.cmdSeqNum;
 
 		read_nvme_sqe(nvmeReg.cmdSlotTag, cmdDword);
+
+#if NVME_KERNEL_MICROBLAZE && NVME_ADMIN_TRACE
+		HOST_TRACE("[CmdFIFO] raw=0x%08X q=%u slot=%u seq=%u\r\n",
+				nvmeReg.dword, nvmeReg.qID, nvmeReg.cmdSlotTag, nvmeReg.cmdSeqNum);
+		HOST_TRACE("[SQE] %08X %08X %08X %08X %08X %08X %08X %08X\r\n",
+				cmdDword[0], cmdDword[1], cmdDword[2], cmdDword[3],
+				cmdDword[4], cmdDword[5], cmdDword[6], cmdDword[7]);
+#endif
 	}
 
 	return (unsigned int)nvmeReg.cmdValid;
@@ -387,7 +441,7 @@ void set_io_cq(unsigned int ioCqIdx, unsigned int valid, unsigned int irqEn, uns
 
 void set_direct_tx_dma(unsigned long long devAddr, unsigned int pcieAddrH, unsigned int pcieAddrL, unsigned int len)
 {
-	HOST_DMA_CMD_FIFO_REG hostDmaReg;
+	HOST_DMA_CMD_FIFO_REG hostDmaReg = {0};
 
 	ASSERT((len <= 0x1000) && ((pcieAddrL & 0x3) == 0)); //modified
 
@@ -420,7 +474,7 @@ void set_direct_tx_dma(unsigned long long devAddr, unsigned int pcieAddrH, unsig
 
 void set_direct_rx_dma(unsigned long long devAddr, unsigned int pcieAddrH, unsigned int pcieAddrL, unsigned int len)
 {
-	HOST_DMA_CMD_FIFO_REG hostDmaReg;
+	HOST_DMA_CMD_FIFO_REG hostDmaReg = {0};
 
 	ASSERT((len <= 0x1000) && ((pcieAddrL & 0x3) == 0)); //modified
 

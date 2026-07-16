@@ -47,6 +47,7 @@
 
 #include "xil_printf.h"
 #include "xil_cache.h"
+#include "xil_types.h"
 #include "debug.h"
 #include "string.h"
 #include "io_access.h"
@@ -59,6 +60,27 @@
 #include "../memory_map.h"
 
 extern NVME_CONTEXT g_nvmeTask;
+
+#if NVME_ADMIN_TRACE
+#define ADMIN_TRACE(FORMAT, ...) xil_printf(FORMAT, ## __VA_ARGS__)
+#else
+#define ADMIN_TRACE(FORMAT, ...)
+#endif
+
+static void admin_clean_dma_buffer(UINTPTR addr, UINTPTR size)
+{
+#if NVME_KERNEL_CORTEX_A53
+	const UINTPTR cacheLineSize = 64U;
+	UINTPTR a = addr & ~(cacheLineSize - 1U);
+	UINTPTR endAddr = (addr + size + cacheLineSize - 1U) & ~(cacheLineSize - 1U);
+
+	for(; a < endAddr; a += cacheLineSize)
+		__asm__ volatile("dc cvac, %0" :: "r"(a) : "memory");
+	__asm__ volatile("dsb sy" ::: "memory");
+#else
+	Xil_DCacheFlushRange(addr, size);
+#endif
+}
 
 static void set_admin_cpl_status(NVME_COMPLETION *nvmeCPL, unsigned int sct, unsigned int sc, unsigned int dnr)
 {
@@ -78,6 +100,11 @@ static void set_admin_cpl_success(NVME_COMPLETION *nvmeCPL)
 static void set_admin_cpl_invalid_opcode(NVME_COMPLETION *nvmeCPL)
 {
 	set_admin_cpl_status(nvmeCPL, SCT_GENERIC_COMMAND_STATUS, SC_INVALID_COMMAND_OPCODE, 1);
+}
+
+static void set_admin_cpl_invalid_queue_id(NVME_COMPLETION *nvmeCPL)
+{
+	set_admin_cpl_status(nvmeCPL, SCT_COMMAND_SPECIFIC_STATUS, SC_INVALID_QUEUE_IDENTIFIER, 1);
 }
 
 unsigned int set_num_of_queue(unsigned int dword11)
@@ -306,6 +333,13 @@ void handle_delete_io_sq(NVME_ADMIN_COMMAND *nvmeAdminCmd, NVME_COMPLETION *nvme
 
 	xil_printf("Delete IO SQ, DW10: 0x%08X\r\n", sqInfo10.dword);
 
+	if(sqInfo10.QID == 0 || sqInfo10.QID > MAX_NUM_OF_IO_SQ)
+	{
+		xil_printf("Invalid Delete IO SQ QID: 0x%04X\r\n", sqInfo10.QID);
+		set_admin_cpl_invalid_queue_id(nvmeCPL);
+		return;
+	}
+
 	ioSqIdx = (unsigned int)sqInfo10.QID - 1;
 	ioSqStatus = g_nvmeTask.ioSqInfo + ioSqIdx;
 
@@ -363,6 +397,13 @@ void handle_delete_io_cq(NVME_ADMIN_COMMAND *nvmeAdminCmd, NVME_COMPLETION *nvme
 
 	xil_printf("Delete IO CQ, DW10: 0x%08X\r\n", cqInfo10.dword);
 
+	if(cqInfo10.QID == 0 || cqInfo10.QID > MAX_NUM_OF_IO_CQ)
+	{
+		xil_printf("Invalid Delete IO CQ QID: 0x%04X\r\n", cqInfo10.QID);
+		set_admin_cpl_invalid_queue_id(nvmeCPL);
+		return;
+	}
+
 	ioCqIdx = (unsigned int)cqInfo10.QID - 1;
 	ioCqStatus = g_nvmeTask.ioCqInfo + ioCqIdx;
 
@@ -381,8 +422,8 @@ void handle_delete_io_cq(NVME_ADMIN_COMMAND *nvmeAdminCmd, NVME_COMPLETION *nvme
 void handle_identify(NVME_ADMIN_COMMAND *nvmeAdminCmd, NVME_COMPLETION *nvmeCPL)
 {
 	ADMIN_IDENTIFY_COMMAND_DW10 identifyInfo;
-	unsigned long long pIdentifyData = NVME_MANAGEMENT_START_ADDR;
-	unsigned long long pIdentifyBase = pIdentifyData;
+	UINTPTR pIdentifyData = (UINTPTR)NVME_MANAGEMENT_START_ADDR;
+	UINTPTR pIdentifyBase = pIdentifyData;
 	unsigned int prp[2];
 	unsigned int prpLen;
 	identifyInfo.dword = nvmeAdminCmd->dword10;
@@ -425,7 +466,7 @@ void handle_identify(NVME_ADMIN_COMMAND *nvmeAdminCmd, NVME_COMPLETION *nvmeCPL)
 		return;
 	}
 
-	Xil_DCacheFlushRange((UINTPTR)pIdentifyBase, 0x1000);
+	admin_clean_dma_buffer((UINTPTR)pIdentifyBase, 0x1000);
 	// identifyWords = (volatile unsigned int *)pIdentifyBase;
 	// xil_printf("[Identify] CNS=%X buf=%08X_%08X PRP1=%08X_%08X PRP2=%08X_%08X\r\n",
 	// 		identifyInfo.CNS,
@@ -441,6 +482,9 @@ void handle_identify(NVME_ADMIN_COMMAND *nvmeAdminCmd, NVME_COMPLETION *nvmeCPL)
 	prp[1] = nvmeAdminCmd->PRP1[1];
 
 	prpLen = 0x1000 - (prp[0] & 0xFFF);
+	ADMIN_TRACE("[Identify] CNS=0x%X buf=%08X_%08X len0=0x%X\r\n",
+			identifyInfo.CNS, (unsigned int)(pIdentifyBase >> 32),
+			(unsigned int)pIdentifyBase, prpLen);
 //	xil_printf("prpLen = %X, prp[1] = %X, prp[0] = %X\r\n",prpLen, prp[1], prp[0]);
 	set_direct_tx_dma(pIdentifyData, prp[1], prp[0], prpLen);
 	if(prpLen != 0x1000)
@@ -456,6 +500,7 @@ void handle_identify(NVME_ADMIN_COMMAND *nvmeAdminCmd, NVME_COMPLETION *nvmeCPL)
 	}
 
 	check_direct_tx_dma_done();
+	ADMIN_TRACE("[Identify] DMA done CNS=0x%X\r\n", identifyInfo.CNS);
 	nvmeCPL->dword[0] = 0;
 	nvmeCPL->specific = 0x0;
 }
@@ -463,7 +508,7 @@ void handle_identify(NVME_ADMIN_COMMAND *nvmeAdminCmd, NVME_COMPLETION *nvmeCPL)
 void handle_get_log_page(NVME_ADMIN_COMMAND *nvmeAdminCmd, NVME_COMPLETION *nvmeCPL)
 {
 	ADMIN_GET_LOG_PAGE_DW10 getLogPageInfo;
-	unsigned long long logBase = NVME_MANAGEMENT_START_ADDR;
+	UINTPTR logBase = (UINTPTR)NVME_MANAGEMENT_START_ADDR;
 	volatile unsigned char *logData = (volatile unsigned char *)logBase;
 	unsigned int transferLen;
 	unsigned int firstPrpLen;
@@ -519,7 +564,7 @@ void handle_get_log_page(NVME_ADMIN_COMMAND *nvmeAdminCmd, NVME_COMPLETION *nvme
 		}
 	}
 
-	Xil_DCacheFlushRange((UINTPTR)logBase, 0x1000);
+	admin_clean_dma_buffer((UINTPTR)logBase, 0x1000);
 
 	firstPrpLen = 0x1000 - (nvmeAdminCmd->PRP1[0] & 0xFFF);
 	if(firstPrpLen > transferLen)
@@ -549,6 +594,13 @@ void handle_nvme_admin_cmd(NVME_COMMAND *nvmeCmd)
 
 	nvmeAdminCmd = (NVME_ADMIN_COMMAND*)nvmeCmd->cmdDword;
 	opc = (unsigned int)nvmeAdminCmd->OPC;
+
+	ADMIN_TRACE("[Admin] q=%u slot=%u cid=%u opc=0x%02X dw0-3=%08X %08X %08X %08X dw10=0x%08X prp1=%08X_%08X prp2=%08X_%08X\r\n",
+			nvmeCmd->qID, nvmeCmd->cmdSlotTag, nvmeAdminCmd->CID, opc,
+			nvmeCmd->cmdDword[0], nvmeCmd->cmdDword[1],
+			nvmeCmd->cmdDword[2], nvmeCmd->cmdDword[3],
+			nvmeAdminCmd->dword10, nvmeAdminCmd->PRP1[1], nvmeAdminCmd->PRP1[0],
+			nvmeAdminCmd->PRP2[1], nvmeAdminCmd->PRP2[0]);
 
 	needCpl = 1;
 	needSlotRelease = 0;
@@ -670,12 +722,20 @@ void handle_nvme_admin_cmd(NVME_COMMAND *nvmeCmd)
 	// }
 
 	if(needCpl == 1)
+	{
+		ADMIN_TRACE("[Admin] auto cpl slot=%u sfw=0x%04X\r\n",
+				nvmeCmd->cmdSlotTag, nvmeCPL.statusFieldWord);
 		set_auto_nvme_cpl(nvmeCmd->cmdSlotTag, nvmeCPL.specific, nvmeCPL.statusFieldWord);
+	}
 	else if(needSlotRelease == 1)
+	{
+		ADMIN_TRACE("[Admin] release slot=%u\r\n", nvmeCmd->cmdSlotTag);
 		set_nvme_slot_release(nvmeCmd->cmdSlotTag);
+	}
 	else
-
-	set_nvme_cpl(nvmeCmd->qID, nvmeAdminCmd->CID, nvmeCPL.specific, nvmeCPL.statusFieldWord);
+	{
+		set_nvme_cpl(nvmeCmd->qID, nvmeAdminCmd->CID, nvmeCPL.specific, nvmeCPL.statusFieldWord);
+	}
 
 	if(__ADMIN_CMD_DONE_MESSAGE_PRINT)
 		xil_printf("Admin Command Done, OPC: 0x%02X\r\n", opc);

@@ -1,0 +1,166 @@
+#ifndef __KERNEL_CONFIG_H_
+#define __KERNEL_CONFIG_H_
+
+/*
+ * Firmware CPU/kernel target selection.
+ *
+ * Default remains the ZynqMP Cortex-A53 firmware.  A MicroBlaze Vitis project
+ * should add -DMICROBLAZE_KERNEL.  The MicroBlaze path is single-core only and
+ * compiles out A53 SMP boot/MMU setup.
+ */
+#if defined(MICROBLAZE_KERNEL) && defined(CORTEX_A53_KERNEL)
+#error "Select only one of MICROBLAZE_KERNEL or CORTEX_A53_KERNEL"
+#endif
+
+#if !defined(MICROBLAZE_KERNEL) && !defined(CORTEX_A53_KERNEL)
+#define CORTEX_A53_KERNEL 1
+#endif
+
+#if defined(MICROBLAZE_KERNEL)
+#define NVME_KERNEL_MICROBLAZE 1
+#define NVME_KERNEL_CORTEX_A53 0
+#else
+#define NVME_KERNEL_MICROBLAZE 0
+#define NVME_KERNEL_CORTEX_A53 1
+#endif
+
+#if NVME_KERNEL_MICROBLAZE
+#undef NVME_SMP_NUM_CORES
+#define NVME_SMP_NUM_CORES 1
+#define NVME_KERNEL_HAS_SMP_BOOT 0
+#define NVME_KERNEL_HAS_A53_MMU_TABLE 0
+#define NVME_KERNEL_HAS_A53_CACHE_OPS 0
+#define NVME_KERNEL_HAS_GIC 0
+#define NVME_KERNEL_HAS_AXI_INTC 1
+#define NVME_DEFAULT_CPU_CAN_ACCESS_BACKING_DRAM 1
+#define NVME_DEFAULT_INIT_ECC_MEMORY 0
+#define NVME_DEFAULT_FAST_WRITE_AUTO_CPL 1
+#else
+#define NVME_KERNEL_HAS_SMP_BOOT 1
+#define NVME_KERNEL_HAS_A53_MMU_TABLE 1
+#define NVME_KERNEL_HAS_A53_CACHE_OPS 1
+#define NVME_KERNEL_HAS_GIC 1
+#define NVME_KERNEL_HAS_AXI_INTC 0
+#define NVME_DEFAULT_CPU_CAN_ACCESS_BACKING_DRAM 1
+#define NVME_DEFAULT_INIT_ECC_MEMORY 1
+#define NVME_DEFAULT_FAST_WRITE_AUTO_CPL 0
+#endif
+
+#ifndef NVME_SMP_NUM_CORES
+#define NVME_SMP_NUM_CORES 3
+#endif
+
+#ifndef NVME_CPU_CAN_ACCESS_BACKING_DRAM
+#define NVME_CPU_CAN_ACCESS_BACKING_DRAM NVME_DEFAULT_CPU_CAN_ACCESS_BACKING_DRAM
+#endif
+
+#ifndef NVME_HOST_CORE
+#define NVME_HOST_CORE 0
+#endif
+
+#ifndef SSD_MODEL_CORE
+#if NVME_SMP_NUM_CORES > 1
+#define SSD_MODEL_CORE 1
+#else
+#define SSD_MODEL_CORE 0
+#endif
+#endif
+
+#ifndef NVME_DMA_CORE
+#if NVME_SMP_NUM_CORES > 2
+#define NVME_DMA_CORE 2
+#else
+#define NVME_DMA_CORE 0
+#endif
+#endif
+
+#ifndef NVME_CPL_CORE
+#define NVME_CPL_CORE NVME_DMA_CORE
+#endif
+
+#define SSD_MODEL_POLL_CORE SSD_MODEL_CORE
+
+#if NVME_HOST_CORE >= NVME_SMP_NUM_CORES
+#error "NVME_HOST_CORE must be less than NVME_SMP_NUM_CORES"
+#endif
+#if SSD_MODEL_CORE >= NVME_SMP_NUM_CORES
+#error "SSD_MODEL_CORE must be less than NVME_SMP_NUM_CORES"
+#endif
+#if NVME_DMA_CORE >= NVME_SMP_NUM_CORES
+#error "NVME_DMA_CORE must be less than NVME_SMP_NUM_CORES"
+#endif
+#if NVME_CPL_CORE != NVME_DMA_CORE
+#error "Separate CPL core is not implemented yet; set NVME_CPL_CORE to NVME_DMA_CORE"
+#endif
+
+#ifndef NVME_USE_STATIC_MMU_TABLE
+#define NVME_USE_STATIC_MMU_TABLE NVME_KERNEL_HAS_A53_MMU_TABLE
+#endif
+
+#ifndef NVME_INIT_ECC_MEMORY
+#define NVME_INIT_ECC_MEMORY NVME_DEFAULT_INIT_ECC_MEMORY
+#endif
+
+#ifndef NVME_USE_GIC_INTERRUPTS
+#define NVME_USE_GIC_INTERRUPTS NVME_KERNEL_HAS_GIC
+#endif
+
+#ifndef NVME_USE_AXI_INTC_INTERRUPTS
+#define NVME_USE_AXI_INTC_INTERRUPTS NVME_KERNEL_HAS_AXI_INTC
+#endif
+
+/*
+ * The NVMe controller/DMA engine can access the backing DDR address window.
+ * Newer MicroBlaze designs can also dereference that window directly; older
+ * MicroBlaze builds can override NVME_CPU_CAN_ACCESS_BACKING_DRAM to 0 and
+ * fall back to the shared BRAM admin buffer.
+ */
+#ifndef NVME_LOCAL_DMA_BUFFER_BASE_ADDR
+#if NVME_KERNEL_MICROBLAZE && !NVME_CPU_CAN_ACCESS_BACKING_DRAM
+#define NVME_LOCAL_DMA_BUFFER_BASE_ADDR 0x80010000ULL
+#else
+#define NVME_LOCAL_DMA_BUFFER_BASE_ADDR 0x5000200000ULL
+#endif
+#endif
+
+#ifndef NVME_LOCAL_DMA_BUFFER_SIZE
+#if NVME_KERNEL_MICROBLAZE && !NVME_CPU_CAN_ACCESS_BACKING_DRAM
+#define NVME_LOCAL_DMA_BUFFER_SIZE 0x10000ULL
+#else
+#define NVME_LOCAL_DMA_BUFFER_SIZE 0x0FE00000ULL
+#endif
+#endif
+
+#ifndef SSD_MODEL_USE_FULL_MAPPING
+#define SSD_MODEL_USE_FULL_MAPPING NVME_CPU_CAN_ACCESS_BACKING_DRAM
+#endif
+
+#ifndef SSD_MODEL_CH_CREDIT_ENTRIES
+#if NVME_KERNEL_MICROBLAZE
+#define SSD_MODEL_CH_CREDIT_ENTRIES 2048U
+#else
+#define SSD_MODEL_CH_CREDIT_ENTRIES (1024U * 96U)
+#endif
+#endif
+
+#ifndef SSD_MODEL_BUFFER_RELEASE_SLOTS
+#if NVME_KERNEL_MICROBLAZE
+#define SSD_MODEL_BUFFER_RELEASE_SLOTS 1024U
+#else
+#define SSD_MODEL_BUFFER_RELEASE_SLOTS (SSD_MODEL_CMD_SLOT_COUNT * 64U)
+#endif
+#endif
+
+#ifndef NVME_MICROBLAZE_SOFT_TIME_STEP_NS
+#define NVME_MICROBLAZE_SOFT_TIME_STEP_NS 1000ULL
+#endif
+
+#ifndef NVME_ADMIN_TRACE
+#define NVME_ADMIN_TRACE 0
+#endif
+
+#ifndef NVME_FAST_WRITE_AUTO_CPL
+#define NVME_FAST_WRITE_AUTO_CPL NVME_DEFAULT_FAST_WRITE_AUTO_CPL
+#endif
+
+#endif /* __KERNEL_CONFIG_H_ */
