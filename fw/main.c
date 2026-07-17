@@ -123,8 +123,17 @@ static void dev_irq_xintc_handler(void *callbackRef)
 #ifndef NVME_ECC_INIT_BASE_ADDR
 #define NVME_ECC_INIT_BASE_ADDR DRAM_START_ADDR
 #endif
+#if NVME_KERNEL_MICROBLAZE
+#ifndef NVME_MICROBLAZE_ECC_INIT_BYTES
+#define NVME_MICROBLAZE_ECC_INIT_BYTES (4ULL * 1024ULL * 1024ULL * 1024ULL)
+#endif
+#endif
 #ifndef NVME_ECC_INIT_END_ADDR
+#if NVME_KERNEL_MICROBLAZE
+#define NVME_ECC_INIT_END_ADDR (NVME_ECC_INIT_BASE_ADDR + NVME_MICROBLAZE_ECC_INIT_BYTES - 1ULL)
+#else
 #define NVME_ECC_INIT_END_ADDR DRAM_END_ADDR
+#endif
 #endif
 #ifndef NVME_ECC_INIT_CHUNK_SIZE
 #define NVME_ECC_INIT_CHUNK_SIZE (256ULL * 1024ULL * 1024ULL)
@@ -183,6 +192,11 @@ static void flush_ecc_mem_range(UINTPTR addr, UINTPTR size)
 		if(chunkEnd > endAddr)
 			chunkEnd = endAddr;
 
+#if NVME_KERNEL_MICROBLAZE
+		xil_printf("ECC MB init chunk: %08X_%08X - %08X_%08X\r\n",
+				(unsigned int)(chunkBase >> 32), (unsigned int)chunkBase,
+				(unsigned int)((chunkEnd - 1U) >> 32), (unsigned int)(chunkEnd - 1U));
+#endif
 		for(a = chunkBase; a < chunkEnd; a += writeStride)
 			*((volatile unsigned long long *)a) = 0ULL;
 	}
@@ -200,6 +214,33 @@ static void init_ecc_memory(void)
 			(unsigned int)(eccInitEnd >> 32), (unsigned int)eccInitEnd);
 	flush_ecc_mem_range(eccInitBase, eccInitSize);
 	xil_printf("ECC memory initialized.\r\n");
+}
+#endif
+
+#ifndef NVME_MICROBLAZE_DDR_PROBE
+#define NVME_MICROBLAZE_DDR_PROBE 0
+#endif
+
+#if NVME_KERNEL_MICROBLAZE && NVME_MICROBLAZE_DDR_PROBE
+static void mb_ddr_probe(void)
+{
+	volatile u32 *probePtr = (volatile u32 *)DRAM_START_ADDR;
+	u32 before;
+	u32 after;
+
+	xil_printf("MB DDR probe: %08X_%08X\r\n",
+			(unsigned int)(DRAM_START_ADDR >> 32),
+			(unsigned int)DRAM_START_ADDR);
+
+	before = probePtr[0];
+	xil_printf("MB DDR probe read before: %08X\r\n", before);
+
+	probePtr[0] = 0x12345678U;
+	Xil_DCacheFlushRange((UINTPTR)probePtr, sizeof(u32));
+	Xil_DCacheInvalidateRange((UINTPTR)probePtr, sizeof(u32));
+
+	after = probePtr[0];
+	xil_printf("MB DDR probe read after: %08X\r\n", after);
 }
 #endif
 
@@ -244,8 +285,12 @@ int main()
 			Xil_SetTlbAttributes(u * MMU_MB, STRONG_ORDERED);
 	}
 
+#if NVME_USE_S1_AXI_CMD_WINDOW
 	Xil_SetTlbAttributes(NVME_CMD_SQE_WINDOW_ADDR, NORM_WB_CACHE);
+#endif
+#if NVME_USE_S1_AXI_PACKED_DMA_SUBMIT
 	Xil_SetTlbAttributes(HOST_DMA_PACKED_SUBMIT_ADDR, NORM_NONCACHE);
+#endif
 
 	for (u64 addr = DRAM_START_ADDR;
 		addr <= DRAM_END_ADDR; addr += 2 * MMU_MB)
@@ -255,19 +300,21 @@ int main()
 #endif
 
 	Xil_ICacheEnable();
-#if NVME_INIT_ECC_MEMORY && NVME_KERNEL_MICROBLAZE
-	init_ecc_memory();
-#endif
 	Xil_DCacheEnable();
+
 #if NVME_KERNEL_HAS_A53_MMU_TABLE
 	xil_printf("[!] MMU has been enabled.\r\n");
 #else
 	xil_printf("[!] MicroBlaze kernel init: single-core, no A53 MMU.\r\n");
 #endif
-#if NVME_INIT_ECC_MEMORY && !NVME_KERNEL_MICROBLAZE
+
+#if NVME_INIT_ECC_MEMORY 
 	init_ecc_memory();
 #endif
-	
+#if NVME_KERNEL_MICROBLAZE && NVME_MICROBLAZE_DDR_PROBE
+	mb_ddr_probe();
+#endif
+
 	xil_printf("\r\n Hello DaisyPlus OpenSSD !!! \r\n");
 
 	Xil_ExceptionInit();

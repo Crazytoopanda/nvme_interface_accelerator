@@ -15,3 +15,4 @@
 **/.Xil
 
 fpga/*/design/*.txt
+**/build

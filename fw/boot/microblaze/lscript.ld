@@ -13,6 +13,7 @@ MEMORY
 {
    microblaze_local_memory : ORIGIN = 0x00000000, LENGTH = 0x00100000
    shared_axi_bram         : ORIGIN = 0x80000000, LENGTH = 0x00020000
+   plddr                   : ORIGIN = 0x5000000000, LENGTH = 0x1000000000
 }
 
 ENTRY(_start)

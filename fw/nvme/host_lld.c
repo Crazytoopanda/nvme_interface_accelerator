@@ -97,7 +97,7 @@ static inline void invalidate_sqe_cache_line(unsigned long long addr)
 static inline void write_packed_auto_dma(unsigned int cmdSlotTag, unsigned int dmaCtrl,
 								 unsigned long long devAddr)
 {
-#if NVME_KERNEL_CORTEX_A53
+#if NVME_KERNEL_CORTEX_A53 && NVME_USE_S1_AXI_PACKED_DMA_SUBMIT
 	unsigned __int128 payload;
 
 	payload = ((unsigned __int128)cmdSlotTag << 96) |
@@ -178,8 +178,9 @@ static void read_nvme_sqe(unsigned int cmdSlotTag, unsigned int *cmdDword)
 {
 	unsigned long long addr;
 
-	addr = NVME_CMD_SQE_WINDOW_ADDR + ((unsigned long long)cmdSlotTag * NVME_CMD_SQE_SIZE);
-#if NVME_KERNEL_CORTEX_A53
+	addr = ((NVME_USE_S1_AXI_CMD_WINDOW) ? NVME_CMD_SQE_WINDOW_ADDR : NVME_CMD_SRAM_ADDR) +
+		((unsigned long long)cmdSlotTag * NVME_CMD_SQE_SIZE);
+#if NVME_KERNEL_CORTEX_A53 && NVME_USE_S1_AXI_CMD_WINDOW
 	invalidate_sqe_cache_line(addr);
 	__builtin_memcpy(cmdDword, (const void *)(unsigned long)addr, NVME_CMD_SQE_SIZE);
 #else

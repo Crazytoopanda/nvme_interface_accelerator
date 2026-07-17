@@ -809,7 +809,9 @@
       <spirit:name>s1_axi</spirit:name>
       <spirit:busType spirit:vendor="xilinx.com" spirit:library="interface" spirit:name="aximm" spirit:version="1.0"/>
       <spirit:abstractionType spirit:vendor="xilinx.com" spirit:library="interface" spirit:name="aximm_rtl" spirit:version="1.0"/>
-      <spirit:slave/>
+      <spirit:slave>
+        <spirit:memoryMapRef spirit:memoryMapRef="s1_axi"/>
+      </spirit:slave>
       <spirit:portMaps>
         <spirit:portMap>
           <spirit:logicalPort>
@@ -1144,6 +1146,18 @@
         <spirit:usage>register</spirit:usage>
       </spirit:addressBlock>
     </spirit:memoryMap>
+    <spirit:memoryMap>
+      <spirit:name>s1_axi</spirit:name>
+      <spirit:displayName>s1_axi</spirit:displayName>
+      <spirit:addressBlock>
+        <spirit:name>reg0</spirit:name>
+        <spirit:displayName>reg0</spirit:displayName>
+        <spirit:baseAddress spirit:format="bitString" spirit:bitStringLength="1">0x0</spirit:baseAddress>
+        <spirit:range spirit:format="bitString" spirit:resolve="dependent" spirit:dependency="pow(2,(spirit:decode(id(&apos;MODELPARAM_VALUE.C_S1_AXI_ADDR_WIDTH&apos;)) - 1) - 0 + 1)" spirit:bitStringLength="33" spirit:minimum="4096" spirit:rangeType="long">0x100000000</spirit:range>
+        <spirit:width spirit:format="long" spirit:resolve="dependent" spirit:dependency="(spirit:decode(id(&apos;MODELPARAM_VALUE.C_S1_AXI_DATA_WIDTH&apos;)) - 1) - 0 + 1">128</spirit:width>
+        <spirit:usage>register</spirit:usage>
+      </spirit:addressBlock>
+    </spirit:memoryMap>
   </spirit:memoryMaps>
   <spirit:model>
     <spirit:views>
@@ -1162,7 +1176,7 @@
         <spirit:parameters>
           <spirit:parameter>
             <spirit:name>viewChecksum</spirit:name>
-            <spirit:value>c5063bb1</spirit:value>
+            <spirit:value>f9a54a27</spirit:value>
           </spirit:parameter>
         </spirit:parameters>
       </spirit:view>
@@ -1181,7 +1195,7 @@
         <spirit:parameters>
           <spirit:parameter>
             <spirit:name>viewChecksum</spirit:name>
-            <spirit:value>f8352158</spirit:value>
+            <spirit:value>f9a54a27</spirit:value>
           </spirit:parameter>
         </spirit:parameters>
       </spirit:view>
@@ -3299,12 +3313,12 @@
       <spirit:modelParameter spirit:dataType="integer">
         <spirit:name>C_S1_AXI_BASEADDR</spirit:name>
         <spirit:displayName>C S1 Axi Baseaddr</spirit:displayName>
-        <spirit:value spirit:format="bitString" spirit:resolve="generated" spirit:id="MODELPARAM_VALUE.C_S1_AXI_BASEADDR" spirit:bitStringLength="32">0xA0200000</spirit:value>
+        <spirit:value spirit:format="bitString" spirit:resolve="generated" spirit:id="MODELPARAM_VALUE.C_S1_AXI_BASEADDR" spirit:bitStringLength="32">0xB0000000</spirit:value>
       </spirit:modelParameter>
       <spirit:modelParameter spirit:dataType="integer">
         <spirit:name>C_S1_AXI_HIGHADDR</spirit:name>
         <spirit:displayName>C S1 Axi Highaddr</spirit:displayName>
-        <spirit:value spirit:format="bitString" spirit:resolve="generated" spirit:id="MODELPARAM_VALUE.C_S1_AXI_HIGHADDR" spirit:bitStringLength="32">0xA03FFFFF</spirit:value>
+        <spirit:value spirit:format="bitString" spirit:resolve="generated" spirit:id="MODELPARAM_VALUE.C_S1_AXI_HIGHADDR" spirit:bitStringLength="32">0xB03FFFFF</spirit:value>
       </spirit:modelParameter>
     </spirit:modelParameters>
   </spirit:model>
@@ -3653,11 +3667,6 @@
         <spirit:userFileType>IMPORTED_FILE</spirit:userFileType>
       </spirit:file>
       <spirit:file>
-        <spirit:name>src/pcie4_uscale_plus_0/pcie4_uscale_plus_0.xci</spirit:name>
-        <spirit:userFileType>xci</spirit:userFileType>
-        <spirit:userFileType>CELL_NAME_pcie4_uscale_plus_0_i</spirit:userFileType>
-      </spirit:file>
-      <spirit:file>
         <spirit:name>src/axi_sqe_window.v</spirit:name>
         <spirit:fileType>verilogSource</spirit:fileType>
         <spirit:userFileType>IMPORTED_FILE</spirit:userFileType>
@@ -3667,6 +3676,12 @@
         <spirit:fileType>verilogSource</spirit:fileType>
         <spirit:userFileType>CHECKSUM_0c050c88</spirit:userFileType>
         <spirit:userFileType>IMPORTED_FILE</spirit:userFileType>
+      </spirit:file>
+      <spirit:file>
+        <spirit:name>src/pcie4_uscale_plus_1/pcie4_uscale_plus_1.xci</spirit:name>
+        <spirit:userFileType>xci</spirit:userFileType>
+        <spirit:userFileType>IMPORTED_FILE</spirit:userFileType>
+        <spirit:userFileType>CELL_NAME_pcie4_uscale_plus_0_i</spirit:userFileType>
       </spirit:file>
     </spirit:fileSet>
     <spirit:fileSet>
@@ -3681,12 +3696,6 @@
     </spirit:fileSet>
     <spirit:fileSet>
       <spirit:name>xilinx_anylanguagebehavioralsimulation_view_fileset</spirit:name>
-      <spirit:file>
-        <spirit:name>src/pcie4_uscale_plus_0/pcie4_uscale_plus_0.xci</spirit:name>
-        <spirit:userFileType>xci</spirit:userFileType>
-        <spirit:userFileType>IMPORTED_FILE</spirit:userFileType>
-        <spirit:userFileType>CELL_NAME_pcie4_uscale_plus_0_i</spirit:userFileType>
-      </spirit:file>
       <spirit:file>
         <spirit:name>src/dev_rx_cmd_fifo.v</spirit:name>
         <spirit:fileType>verilogSource</spirit:fileType>
@@ -4022,6 +4031,12 @@
         <spirit:fileType>verilogSource</spirit:fileType>
         <spirit:userFileType>IMPORTED_FILE</spirit:userFileType>
       </spirit:file>
+      <spirit:file>
+        <spirit:name>src/pcie4_uscale_plus_1/pcie4_uscale_plus_1.xci</spirit:name>
+        <spirit:userFileType>xci</spirit:userFileType>
+        <spirit:userFileType>IMPORTED_FILE</spirit:userFileType>
+        <spirit:userFileType>CELL_NAME_pcie4_uscale_plus_0_i</spirit:userFileType>
+      </spirit:file>
     </spirit:fileSet>
     <spirit:fileSet>
       <spirit:name>xilinx_anylanguagebehavioralsimulation_xilinx_com_ip_pcie4_uscale_plus_1_3__ref_view_fileset</spirit:name>
@@ -4142,12 +4157,12 @@
     <spirit:parameter>
       <spirit:name>C_S1_AXI_BASEADDR</spirit:name>
       <spirit:displayName>C S1 Axi Baseaddr</spirit:displayName>
-      <spirit:value spirit:format="bitString" spirit:resolve="user" spirit:id="PARAM_VALUE.C_S1_AXI_BASEADDR" spirit:bitStringLength="32">0xA0200000</spirit:value>
+      <spirit:value spirit:format="bitString" spirit:resolve="user" spirit:id="PARAM_VALUE.C_S1_AXI_BASEADDR" spirit:bitStringLength="32">0xB0000000</spirit:value>
     </spirit:parameter>
     <spirit:parameter>
       <spirit:name>C_S1_AXI_HIGHADDR</spirit:name>
       <spirit:displayName>C S1 Axi Highaddr</spirit:displayName>
-      <spirit:value spirit:format="bitString" spirit:resolve="user" spirit:id="PARAM_VALUE.C_S1_AXI_HIGHADDR" spirit:bitStringLength="32">0xA03FFFFF</spirit:value>
+      <spirit:value spirit:format="bitString" spirit:resolve="user" spirit:id="PARAM_VALUE.C_S1_AXI_HIGHADDR" spirit:bitStringLength="32">0xB03FFFFF</spirit:value>
     </spirit:parameter>
   </spirit:parameters>
   <spirit:vendorExtensions>
@@ -4168,12 +4183,12 @@
         <xilinx:xpmLibrary>XPM_FIFO</xilinx:xpmLibrary>
         <xilinx:xpmLibrary>XPM_MEMORY</xilinx:xpmLibrary>
       </xilinx:xpmLibraries>
-      <xilinx:coreRevision>3</xilinx:coreRevision>
+      <xilinx:coreRevision>6</xilinx:coreRevision>
       <xilinx:upgrades>
         <xilinx:canUpgradeFrom>xilinx.com:user:s_axi_nvme:1.0</xilinx:canUpgradeFrom>
         <xilinx:canUpgradeFrom>crztech:user:nvme_ctrl:1.0</xilinx:canUpgradeFrom>
       </xilinx:upgrades>
-      <xilinx:coreCreationDateTime>2026-07-09T06:55:11Z</xilinx:coreCreationDateTime>
+      <xilinx:coreCreationDateTime>2026-07-17T10:22:19Z</xilinx:coreCreationDateTime>
       <xilinx:tags>
         <xilinx:tag xilinx:name="ui.data.coregen.dd@63e42425_ARCHIVE_LOCATION">c:/Xilinx/OCSSD/201901/CosmosMax/ip-repo/nvme_ctrl</xilinx:tag>
         <xilinx:tag xilinx:name="ui.data.coregen.dd@bdacb12_ARCHIVE_LOCATION">c:/Xilinx/OCSSD/201901/CosmosMax/ip-repo/nvme_ctrl</xilinx:tag>
@@ -4687,13 +4702,13 @@
     </xilinx:coreExtensions>
     <xilinx:packagingInfo>
       <xilinx:xilinxVersion>2023.2</xilinx:xilinxVersion>
-      <xilinx:checksum xilinx:scope="busInterfaces" xilinx:value="829ab9a0"/>
+      <xilinx:checksum xilinx:scope="busInterfaces" xilinx:value="509650ad"/>
       <xilinx:checksum xilinx:scope="addressSpaces" xilinx:value="ee7fbc74"/>
-      <xilinx:checksum xilinx:scope="memoryMaps" xilinx:value="23b08218"/>
-      <xilinx:checksum xilinx:scope="fileGroups" xilinx:value="96e57b84"/>
+      <xilinx:checksum xilinx:scope="memoryMaps" xilinx:value="a2b7f343"/>
+      <xilinx:checksum xilinx:scope="fileGroups" xilinx:value="f3143add"/>
       <xilinx:checksum xilinx:scope="ports" xilinx:value="3732b58b"/>
-      <xilinx:checksum xilinx:scope="hdlParameters" xilinx:value="3bf88b53"/>
-      <xilinx:checksum xilinx:scope="parameters" xilinx:value="efed7c2d"/>
+      <xilinx:checksum xilinx:scope="hdlParameters" xilinx:value="0e60b6ae"/>
+      <xilinx:checksum xilinx:scope="parameters" xilinx:value="d30ee9f0"/>
     </xilinx:packagingInfo>
   </spirit:vendorExtensions>
 </spirit:component>

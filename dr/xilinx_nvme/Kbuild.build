@@ -1,0 +1,2 @@
+obj-m += xilinx_nvme_pci.o
+xilinx_nvme_pci-objs := pci.o
