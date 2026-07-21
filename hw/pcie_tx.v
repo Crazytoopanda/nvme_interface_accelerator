@@ -115,6 +115,7 @@ module pcie_tx # (
 	input   [2:0]                           tx_cpld_attr,           // Memory Read Attribute
 	input   [1:0]                           tx_cpld_at,             // Address Translation 
 	input   [7:0]                           tx_cpld_be,
+	input   [7:0]                           tx_cpld_func_num,
 	output									tx_cpld_req_ack,
 
 	input									tx_mrd0_req,
@@ -184,6 +185,7 @@ pcie_tx_arb_inst0(
 	.tx_cpld_attr							(tx_cpld_attr),
 	.tx_cpld_at							    (tx_cpld_at),
 	.tx_cpld_be							    (tx_cpld_be),
+		.tx_cpld_func_num							(tx_cpld_func_num),
 	.tx_cpld_req_ack						(tx_cpld_req_ack),
 
 	.tx_mrd0_req							(tx_mrd0_req),

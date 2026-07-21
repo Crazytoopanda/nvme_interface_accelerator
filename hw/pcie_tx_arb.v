@@ -74,6 +74,7 @@ http://www.hanyang.ac.kr/
 	input   [2:0]                           tx_cpld_attr,           // Memory Read Attribute
 	input   [1:0]                           tx_cpld_at,             // Address Translation 
 	input   [7:0]                           tx_cpld_be,
+	input   [7:0]                           tx_cpld_func_num,
  	output									tx_cpld_req_ack,
 
  	input									tx_mrd0_req,
@@ -313,7 +314,7 @@ begin
 		6'b000001: begin
 			r_tx_pcie_head0 <= {2'b0, 1'b0, byte_count, 6'b0, tx_cpld_at, 1'b0, lower_addr_dw};
 			r_tx_pcie_head1 <= {tx_cpld_req_id, 1'b0, 1'b0, 3'b000, tx_cpld_len};
-			r_tx_pcie_head2 <= {1'b0, 1'b0, tx_cpld_attr, tx_cpld_tc, 1'b0, 8'b0, 8'b0, tx_cpld_tag};
+				r_tx_pcie_head2 <= {1'b0, tx_cpld_attr, tx_cpld_tc, 1'b0, 8'b0, tx_cpld_func_num, tx_cpld_tag};
 			r_tx_pcie_head3 <= tx_cpld_data[31:0];
 			r_tx_pcie_len   <= tx_cpld_len;
 		end

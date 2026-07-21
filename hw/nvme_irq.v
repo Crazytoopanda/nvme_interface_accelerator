@@ -68,12 +68,13 @@ module nvme_irq # (
 
   // MSI Interrupt Interface
 
-  input                            cfg_interrupt_msi_enable,
+  input                    [3:0]   cfg_interrupt_msi_enable,
   input                            cfg_interrupt_msi_sent,
   input                            cfg_interrupt_msi_fail,
   output wire             [31:0]   cfg_interrupt_msi_int,  
   output wire                      cfg_interrupt_msi_pending_status_data_enable,
   output wire             [31:0]   cfg_interrupt_msi_pending_status,
+	  output wire             [7:0]    cfg_interrupt_msi_function_number,
 
   //MSI-X Interrupt Interface
 
@@ -87,6 +88,10 @@ module nvme_irq # (
 	input									nvme_intms_ivms,
 	input									nvme_intmc_ivmc,
 	output									cq_irq_status,
+		input										pf0_msi_irq_req,
+		input	[8:0]								pf0_msi_irq_vector,
+		input										pf1_msi_irq_req,
+		input	[8:0]								pf1_msi_irq_vector,
 
 	input	[8:0]							cq_rst_n,
 	input	[8:0]							cq_valid,
@@ -125,6 +130,7 @@ module nvme_irq # (
 wire										w_pcie_legacy_irq_set;
 wire										w_pcie_msi_irq_set;
 wire	[8:0]								w_pcie_irq_vector;
+wire	[7:0]								w_pcie_irq_function;
 wire										w_pcie_legacy_irq_clear;
 wire										w_pcie_irq_done;
 
@@ -149,6 +155,7 @@ pcie_irq_gen_inst0
     .cfg_interrupt_msi_fail                 ( cfg_interrupt_msi_fail ),
     .cfg_interrupt_msi_int                  ( cfg_interrupt_msi_int ),
     .cfg_interrupt_msi_pending_status_data_enable   ( cfg_interrupt_msi_pending_status_data_enable ),
+	    .cfg_interrupt_msi_function_number      ( cfg_interrupt_msi_function_number ),
     .cfg_interrupt_msi_pending_status       ( cfg_interrupt_msi_pending_status ),
 
     //MSI-X Interrupt Interface
@@ -163,6 +170,7 @@ pcie_irq_gen_inst0
     .pcie_legacy_irq_set					(w_pcie_legacy_irq_set),
 	.pcie_msi_irq_set						(w_pcie_msi_irq_set),
 	.pcie_irq_vector						(w_pcie_irq_vector),
+	.pcie_irq_function					(w_pcie_irq_function),
 	.pcie_legacy_irq_clear					(w_pcie_legacy_irq_clear),
 	.pcie_irq_done							(w_pcie_irq_done)
 );
@@ -179,6 +187,10 @@ nvme_irq_handler_inst0
 	.nvme_intms_ivms						(nvme_intms_ivms),
 	.nvme_intmc_ivmc						(nvme_intmc_ivmc),
 	.cq_irq_status							(cq_irq_status),
+		.pf0_msi_irq_req						(pf0_msi_irq_req),
+		.pf0_msi_irq_vector					(pf0_msi_irq_vector),
+		.pf1_msi_irq_req						(pf1_msi_irq_req),
+		.pf1_msi_irq_vector					(pf1_msi_irq_vector),
 
 	.cq_rst_n								(cq_rst_n),
 	.cq_valid								(cq_valid),
@@ -216,6 +228,7 @@ nvme_irq_handler_inst0
 	.pcie_legacy_irq_set					(w_pcie_legacy_irq_set),
 	.pcie_msi_irq_set						(w_pcie_msi_irq_set),
 	.pcie_irq_vector						(w_pcie_irq_vector),
+		.pcie_irq_function					(w_pcie_irq_function),
 	.pcie_legacy_irq_clear					(w_pcie_legacy_irq_clear),
 	.pcie_irq_done							(w_pcie_irq_done)
 );

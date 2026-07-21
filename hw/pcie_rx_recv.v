@@ -101,6 +101,10 @@ http://www.hanyang.ac.kr/
 
  	output  [7:0]                    req_be,
 
+	output									bar2_mreq_fifo_wr_en,
+	output	[C_PCIE_DATA_WIDTH-1:0]			bar2_mreq_fifo_wr_data,
+	output  [7:0]                    bar2_req_be,
+
  	output	[7:0]							cpld_fifo_tag,
  	output	[C_PCIE_DATA_WIDTH-1:0]			cpld_fifo_wr_data,
  	output									cpld_fifo_wr_en,
@@ -124,10 +128,15 @@ localparam	S_CQ_RX_DATA						= 2'b10;
 
      reg										r_mreq_fifo_wr_en;
      reg		[C_PCIE_DATA_WIDTH-1:0]			r_mreq_fifo_wr_data;
+     reg										r_bar2_mreq_fifo_wr_en;
+     reg		[C_PCIE_DATA_WIDTH-1:0]			r_bar2_mreq_fifo_wr_data;
+     reg										r_cq_rx_bar2;
     
 (* KEEP = "TRUE", SHIFT_EXTRACT = "NO" *)      reg		[9:0]									r_mreq_tlp_count;
 
  	wire  [7:0]                    w_req_be;
+	wire                           w_cq_rx_is_bar2_sof;
+	wire                           w_mem_req_bar2;
 
  	reg  [7:0]                    r_req_be;
 
@@ -135,11 +144,16 @@ assign pcie_mreq_err = r_pcie_mreq_err;
 
 assign mreq_fifo_wr_en = r_mreq_fifo_wr_en;
 assign mreq_fifo_wr_data = r_mreq_fifo_wr_data;
+assign bar2_mreq_fifo_wr_en = r_bar2_mreq_fifo_wr_en;
+assign bar2_mreq_fifo_wr_data = r_bar2_mreq_fifo_wr_data;
 
 assign w_cq_rx_is_sof = m_axis_cq_tuser[80];
 assign w_req_be[7:0] = {m_axis_cq_tuser[11:8], m_axis_cq_tuser[3:0]};
+assign w_cq_rx_is_bar2_sof = w_cq_rx_is_sof & (m_axis_cq_tdata[114:112] == 3'b010);
+assign w_mem_req_bar2 = (cq_cur_state == S_CQ_RX_IDLE_SOF) ? w_cq_rx_is_bar2_sof : r_cq_rx_bar2;
 
 assign req_be = r_req_be;
+assign bar2_req_be = r_req_be;
 
 assign m_axis_cq_tready = r_m_axis_cq_tready;
 
@@ -191,8 +205,10 @@ end
 
 always @ (posedge pcie_user_clk)
 begin
-	if(m_axis_cq_tvalid == 1 && w_cq_rx_is_sof == 1)
+	if(m_axis_cq_tvalid == 1 && w_cq_rx_is_sof == 1) begin
 		r_req_be <= w_req_be;
+		r_cq_rx_bar2 <= w_cq_rx_is_bar2_sof;
+	end
 end
 
 
@@ -223,7 +239,8 @@ end
 
 always @ (posedge pcie_user_clk)
 begin
-	r_mreq_fifo_wr_en <= r_mem_req_en;
+	r_mreq_fifo_wr_en <= r_mem_req_en & ~w_mem_req_bar2;
+	r_bar2_mreq_fifo_wr_en <= r_mem_req_en & (cq_cur_state == S_CQ_RX_IDLE_SOF) & w_cq_rx_is_bar2_sof;
 
 	if(m_axis_cq_tvalid == 1) begin 	
 		r_m_axis_cq_rx_tdata <= m_axis_cq_tdata;
@@ -233,6 +250,7 @@ end
 always @ (*) 
 begin 
 	r_mreq_fifo_wr_data <= r_m_axis_cq_rx_tdata;
+	r_bar2_mreq_fifo_wr_data <= r_m_axis_cq_rx_tdata;
 end
 
 localparam	S_RC_RX_IDLE_SOF					= 3'b001;

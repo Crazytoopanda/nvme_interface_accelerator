@@ -384,8 +384,8 @@ module user_top # (
   output wire                                cfg_interrupt_pending,
   input                                      cfg_interrupt_sent,
 
-  input                                      cfg_interrupt_msi_enable,
-  input                            [2:0]     cfg_interrupt_msi_mmenable,
+  input                            [3:0]     cfg_interrupt_msi_enable,
+  input                           [11:0]     cfg_interrupt_msi_mmenable,
   input                                      cfg_interrupt_msi_mask_update,
   input                           [31:0]     cfg_interrupt_msi_data,
   output wire                      [1:0]     cfg_interrupt_msi_select,
@@ -400,7 +400,7 @@ module user_top # (
   output wire                      [7:0]     cfg_interrupt_msi_function_number,
   output wire                                cfg_interrupt_msi_pending_status_data_enable,
 
-  input wire                                 cfg_interrupt_msix_enable,
+  input wire                       [3:0]     cfg_interrupt_msix_enable,
 
 // EP only
   input                                      cfg_hot_reset_in,
@@ -605,6 +605,81 @@ assign w_dma_cmd_wr_en_mux = w_s1_dma_cmd_wr_en | w_dma_cmd_wr_en;
 assign w_dma_cmd_wr_data0_mux = (w_s1_dma_cmd_wr_en == 1) ? w_s1_dma_cmd_wr_data0 : w_dma_cmd_wr_data0;
 assign w_dma_cmd_wr_data1_mux = (w_s1_dma_cmd_wr_en == 1) ? w_s1_dma_cmd_wr_data1 : w_dma_cmd_wr_data1;
 
+wire										w_bar2_reg_req_pcie;
+wire										w_bar2_reg_wr_pcie;
+wire	[17:0]							w_bar2_reg_addr_pcie;
+wire	[31:0]							w_bar2_reg_wdata_pcie;
+wire	[3:0]							w_bar2_reg_be_pcie;
+wire										w_bar2_reg_ack_pcie;
+wire	[31:0]							w_bar2_reg_rdata_pcie;
+
+wire										w_bar2_reg_req_cpu;
+wire										w_bar2_reg_wr_cpu;
+wire	[17:0]							w_bar2_reg_addr_cpu;
+wire	[31:0]							w_bar2_reg_wdata_cpu;
+wire	[3:0]							w_bar2_reg_be_cpu;
+wire										w_bar2_reg_ack_cpu;
+wire	[31:0]							w_bar2_reg_rdata_cpu;
+wire										w_bar2_pf1_msi_req_toggle_cpu;
+wire	[8:0]							w_bar2_pf1_msi_vector_cpu;
+wire										w_bar2_pf0_msi_req_toggle_cpu;
+wire	[8:0]							w_bar2_pf0_msi_vector_cpu;
+wire										w_bar2_pf1_msi_irq_req_pcie;
+wire	[8:0]							w_bar2_pf1_msi_vector_pcie;
+wire										w_bar2_pf0_msi_irq_req_pcie;
+wire	[8:0]							w_bar2_pf0_msi_vector_pcie;
+
+
+bar2_reg_cdc #(
+	.C_BAR2_ADDR_WIDTH						(18)
+)
+bar2_reg_cdc_inst0(
+	.pcie_clk								(user_clk_out),
+	.pcie_rst_n							(pcie_user_rst_n),
+	.pcie_reg_req							(w_bar2_reg_req_pcie),
+	.pcie_reg_wr							(w_bar2_reg_wr_pcie),
+	.pcie_reg_addr						(w_bar2_reg_addr_pcie),
+	.pcie_reg_wdata						(w_bar2_reg_wdata_pcie),
+	.pcie_reg_be							(w_bar2_reg_be_pcie),
+	.pcie_reg_ack						(w_bar2_reg_ack_pcie),
+	.pcie_reg_rdata						(w_bar2_reg_rdata_pcie),
+
+	.cpu_clk								(s0_axi_aclk),
+	.cpu_rst_n							(s0_axi_aresetn),
+	.cpu_reg_req							(w_bar2_reg_req_cpu),
+	.cpu_reg_wr							(w_bar2_reg_wr_cpu),
+	.cpu_reg_addr						(w_bar2_reg_addr_cpu),
+	.cpu_reg_wdata						(w_bar2_reg_wdata_cpu),
+	.cpu_reg_be							(w_bar2_reg_be_cpu),
+	.cpu_reg_ack						(w_bar2_reg_ack_cpu),
+	.cpu_reg_rdata						(w_bar2_reg_rdata_cpu)
+);
+
+bar2_msi_cdc
+bar2_pf1_msi_cdc_inst0(
+	.cpu_clk							(s0_axi_aclk),
+	.cpu_rst_n						(s0_axi_aresetn),
+	.cpu_req_toggle					(w_bar2_pf1_msi_req_toggle_cpu),
+	.cpu_vector						(w_bar2_pf1_msi_vector_cpu),
+	.pcie_clk							(user_clk_out),
+	.pcie_rst_n						(pcie_user_rst_n),
+	.pcie_req							(w_bar2_pf1_msi_irq_req_pcie),
+	.pcie_vector						(w_bar2_pf1_msi_vector_pcie)
+);
+
+bar2_msi_cdc
+bar2_pf0_msi_cdc_inst0(
+	.cpu_clk							(s0_axi_aclk),
+	.cpu_rst_n						(s0_axi_aresetn),
+	.cpu_req_toggle					(w_bar2_pf0_msi_req_toggle_cpu),
+	.cpu_vector						(w_bar2_pf0_msi_vector_cpu),
+	.pcie_clk							(user_clk_out),
+	.pcie_rst_n						(pcie_user_rst_n),
+	.pcie_req							(w_bar2_pf0_msi_irq_req_pcie),
+	.pcie_vector						(w_bar2_pf0_msi_vector_pcie)
+);
+
+
 wire	[7:0]								w_dma_rx_direct_done_cnt;
 wire	[7:0]								w_dma_tx_direct_done_cnt;
 wire	[7:0]								w_dma_rx_done_cnt;
@@ -635,6 +710,8 @@ wire	[C_M0_AXI_ADDR_WIDTH-3:0]			w_dev_tx_cmd_wr_data;
 wire										w_dev_tx_cmd_full_n;
 
 wire   [3:0]                               w_reset_count;
+
+
 
   //----------------------------------------------------------------------------------------------------------------//
   // PCIe Block EP Tieoffs - Example PIO doesn't support the following outputs                                      //
@@ -668,7 +745,6 @@ wire   [3:0]                               w_reset_count;
   assign cfg_interrupt_msi_tph_present       = 1'b0;
   assign cfg_interrupt_msi_tph_type          = 2'h0;
   assign cfg_interrupt_msi_tph_st_tag        = 8'h0;
-  assign cfg_interrupt_msi_function_number   = 8'h0;
 
   // Funtion level reset register.
   reg [1:0]     cfg_flr_done_reg0;
@@ -932,6 +1008,18 @@ s_axi_top_inst0 (
 	.dma_cmd_wr_data1						(w_dma_cmd_wr_data1),
 	.dma_cmd_wr_rdy_n						(w_dma_cmd_wr_rdy_n),
 
+		.bar2_reg_req							(w_bar2_reg_req_cpu),
+		.bar2_reg_wr							(w_bar2_reg_wr_cpu),
+		.bar2_reg_addr						(w_bar2_reg_addr_cpu),
+		.bar2_reg_wdata						(w_bar2_reg_wdata_cpu),
+		.bar2_reg_be							(w_bar2_reg_be_cpu),
+		.bar2_reg_ack						(w_bar2_reg_ack_cpu),
+		.bar2_reg_rdata						(w_bar2_reg_rdata_cpu),
+		.bar2_msi_req_toggle				(w_bar2_pf1_msi_req_toggle_cpu),
+		.bar2_msi_vector					(w_bar2_pf1_msi_vector_cpu),
+		.bar2_pf0_msi_req_toggle			(w_bar2_pf0_msi_req_toggle_cpu),
+		.bar2_pf0_msi_vector				(w_bar2_pf0_msi_vector_cpu),
+
 ////////////////////////////////////////////////////////////////
 //AXI4 master interface signals
 	.m0_axi_aclk							(m0_axi_aclk),
@@ -1115,9 +1203,9 @@ reg_cpu_pcie_sync_isnt0
 	.pcie_link_up						(user_lnk_up),
 	.pl_ltssm_state						(cfg_ltssm_state),
 	.cfg_command						(cfg_function_status),
-	.cfg_interrupt_mmenable				(cfg_interrupt_msi_mmenable),
-	.cfg_interrupt_msienable			(cfg_interrupt_msi_enable),
-	.cfg_interrupt_msixenable			(cfg_interrupt_msix_enable),
+	.cfg_interrupt_mmenable				(cfg_interrupt_msi_mmenable[2:0]),
+	.cfg_interrupt_msienable			(cfg_interrupt_msi_enable[0]),
+	.cfg_interrupt_msixenable			(cfg_interrupt_msix_enable[0]),
 
 	.pcie_mreq_err						(w_pcie_mreq_err),
 	.pcie_cpld_err						(w_pcie_cpld_err),
@@ -1213,6 +1301,18 @@ nvme_pcie_inst0(
 
 	.cpu_bus_clk							(s0_axi_aclk),
 	.cpu_bus_rst_n							(s0_axi_aresetn),
+
+		.bar2_reg_req							(w_bar2_reg_req_pcie),
+		.bar2_reg_wr							(w_bar2_reg_wr_pcie),
+		.bar2_reg_addr						(w_bar2_reg_addr_pcie),
+		.bar2_reg_wdata						(w_bar2_reg_wdata_pcie),
+		.bar2_reg_be							(w_bar2_reg_be_pcie),
+		.bar2_reg_ack						(w_bar2_reg_ack_pcie),
+		.bar2_reg_rdata						(w_bar2_reg_rdata_pcie),
+		.bar2_pf0_msi_irq_req			(w_bar2_pf0_msi_irq_req_pcie),
+		.bar2_pf0_msi_irq_vector			(w_bar2_pf0_msi_vector_pcie),
+		.bar2_pf1_msi_irq_req			(w_bar2_pf1_msi_irq_req_pcie),
+		.bar2_pf1_msi_irq_vector			(w_bar2_pf1_msi_vector_pcie),
 
 	.nvme_cc_en								(w_nvme_cc_en),
 	.nvme_cc_shn							(w_nvme_cc_shn),
@@ -1386,9 +1486,10 @@ nvme_pcie_inst0(
 	.cfg_interrupt_msi_fail                         ( cfg_interrupt_msi_fail ),
 	.cfg_interrupt_msi_int                          ( cfg_interrupt_msi_int ), 
     .cfg_interrupt_msi_pending_status_data_enable   ( cfg_interrupt_msi_pending_status_data_enable ),
+		.cfg_interrupt_msi_function_number       ( cfg_interrupt_msi_function_number ),
     .cfg_interrupt_msi_pending_status               ( cfg_interrupt_msi_pending_status ),
 
-	.cfg_interrupt_msix_enable                      ( cfg_interrupt_msix_enable ),
+	.cfg_interrupt_msix_enable                      ( cfg_interrupt_msix_enable[0] ),
 	.cfg_interrupt_msix_sent                        ( 1'b0 ),
 	.cfg_interrupt_msix_fail                        ( 1'b0 ),
 	.cfg_interrupt_msix_int                         (  ),

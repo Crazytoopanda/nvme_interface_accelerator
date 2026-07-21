@@ -101,6 +101,10 @@ module pcie_rx # (
 
 	output  [7:0]                           req_be,
 
+	output									bar2_mreq_fifo_wr_en,
+	output	[C_PCIE_DATA_WIDTH-1:0]			bar2_mreq_fifo_wr_data,
+	output  [7:0]                           bar2_req_be,
+
 	output	[7:0]							cpld0_fifo_tag,
 	output									cpld0_fifo_tag_last,
 	output									cpld0_fifo_wr_en,
@@ -163,6 +167,10 @@ pcie_rx_recv_inst0(
 	.mreq_fifo_wr_data						(mreq_fifo_wr_data),
 
 	.req_be                                (req_be),
+
+	.bar2_mreq_fifo_wr_en				(bar2_mreq_fifo_wr_en),
+	.bar2_mreq_fifo_wr_data			(bar2_mreq_fifo_wr_data),
+	.bar2_req_be                           (bar2_req_be),
 
 	.cpld_fifo_tag							(w_cpld_fifo_tag),
 	.cpld_fifo_tag_last						(w_cpld_fifo_tag_last),

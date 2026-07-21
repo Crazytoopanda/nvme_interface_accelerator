@@ -183,6 +183,18 @@ module s_axi_top # (
 	output	[C_M0_AXI_ADDR_WIDTH+23:0]			dma_cmd_wr_data1, //modified
 	input									dma_cmd_wr_rdy_n,
 
+		input									bar2_reg_req,
+		input									bar2_reg_wr,
+		input	[17:0]									bar2_reg_addr,
+		input	[31:0]								bar2_reg_wdata,
+		input	[3:0]									bar2_reg_be,
+		output									bar2_reg_ack,
+		output	[31:0]									bar2_reg_rdata,
+		output											bar2_msi_req_toggle,
+		output	[8:0]								bar2_msi_vector,
+		output											bar2_pf0_msi_req_toggle,
+		output	[8:0]								bar2_pf0_msi_vector,
+
 	input									pcie_mreq_err,
 	input									pcie_cpld_err,
 	input									pcie_cpld_len_err,
@@ -420,6 +432,18 @@ s_axi_reg_inst0 (
 	.dma_cmd_wr_data0						(dma_cmd_wr_data0),
 	.dma_cmd_wr_data1						(dma_cmd_wr_data1),
 	.dma_cmd_wr_rdy_n						(dma_cmd_wr_rdy_n),
+
+		.bar2_reg_req							(bar2_reg_req),
+		.bar2_reg_wr							(bar2_reg_wr),
+		.bar2_reg_addr						(bar2_reg_addr),
+		.bar2_reg_wdata						(bar2_reg_wdata),
+		.bar2_reg_be							(bar2_reg_be),
+		.bar2_reg_ack						(bar2_reg_ack),
+		.bar2_reg_rdata						(bar2_reg_rdata),
+		.bar2_msi_req_toggle				(bar2_msi_req_toggle),
+		.bar2_msi_vector					(bar2_msi_vector),
+		.bar2_pf0_msi_req_toggle			(bar2_pf0_msi_req_toggle),
+		.bar2_pf0_msi_vector				(bar2_pf0_msi_vector),
 
 	.dma_rx_direct_done_cnt					(dma_rx_direct_done_cnt),
 	.dma_tx_direct_done_cnt					(dma_tx_direct_done_cnt),

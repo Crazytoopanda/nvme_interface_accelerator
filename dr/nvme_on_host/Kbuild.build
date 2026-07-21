@@ -1,0 +1,3 @@
+ccflags-y += -DNVME_ON_HOST_DEBUG=$(NVME_ON_HOST_DEBUG)
+obj-m += nvme_on_host.o
+nvme_on_host-objs := pci.o

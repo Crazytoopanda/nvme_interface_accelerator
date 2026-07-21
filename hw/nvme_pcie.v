@@ -88,6 +88,18 @@ module nvme_pcie # (
 	input									cpu_bus_clk,
 	input									cpu_bus_rst_n,
 
+	output									bar2_reg_req,
+	output									bar2_reg_wr,
+	output	[17:0]									bar2_reg_addr,
+	output	[31:0]									bar2_reg_wdata,
+	output	[3:0]									bar2_reg_be,
+	input									bar2_reg_ack,
+	input	[31:0]									bar2_reg_rdata,
+	input											bar2_pf0_msi_irq_req,
+	input	[8:0]								bar2_pf0_msi_irq_vector,
+	input											bar2_pf1_msi_irq_req,
+	input	[8:0]								bar2_pf1_msi_irq_vector,
+
 	output									nvme_cc_en,
 	output	[1:0]							nvme_cc_shn,
 
@@ -268,12 +280,13 @@ module nvme_pcie # (
 	output wire              [3:0]   cfg_interrupt_int,  // 4 Bits for INTA, INTB, INTC, INTD (assert or deassert)
 
 	// MSI Interrupt Interface
-	input                            cfg_interrupt_msi_enable,
+	input                    [3:0]   cfg_interrupt_msi_enable,
 	input                            cfg_interrupt_msi_sent,
 	input                            cfg_interrupt_msi_fail,
 	output wire             [31:0]   cfg_interrupt_msi_int,
 	output wire                      cfg_interrupt_msi_pending_status_data_enable,
 	output wire             [31:0]   cfg_interrupt_msi_pending_status,
+		output wire             [7:0]    cfg_interrupt_msi_function_number,
   
 	//MSI-X Interrupt Interface
 	input                            cfg_interrupt_msix_enable,
@@ -415,6 +428,44 @@ wire	[7:0]								w_io_cq8_head_ptr;
 wire	[8:0]								w_cq_head_update;
 
 wire    [7:0]                               w_req_be;
+wire										w_bar2_mreq_fifo_wr_en;
+wire	[C_PCIE_DATA_WIDTH-1:0]			w_bar2_mreq_fifo_wr_data;
+wire    [7:0]                               w_bar2_req_be;
+
+wire										w_bar0_tx_cpld_req_ack;
+wire										w_bar2_tx_cpld_req;
+wire	[7:0]							w_bar2_tx_cpld_tag;
+wire	[15:0]							w_bar2_tx_cpld_req_id;
+wire	[12:2]							w_bar2_tx_cpld_len;
+wire	[6:0]							w_bar2_tx_cpld_laddr;
+wire	[63:0]							w_bar2_tx_cpld_data;
+wire	[2:0]                               w_bar2_tx_cpld_tc;
+wire    [2:0]                               w_bar2_tx_cpld_attr;
+wire    [1:0]                               w_bar2_tx_cpld_at;
+wire    [7:0]                               w_bar2_tx_cpld_be;
+wire    [7:0]                               w_bar2_tx_cpld_func_num;
+wire										w_bar2_tx_cpld_req_ack;
+
+
+reg										r_tx_cpld_mux_valid;
+reg										r_tx_cpld_mux_bar2;
+reg										r_tx_cpld_bar0_pending;
+reg										r_tx_cpld_bar2_pending;
+
+wire										w_tx_cpld_mux_start;
+wire										w_tx_cpld_mux_start_bar2;
+wire										w_tx_cpld_mux_bar2;
+wire										w_mux_tx_cpld_req;
+wire	[7:0]							w_mux_tx_cpld_tag;
+wire	[15:0]							w_mux_tx_cpld_req_id;
+wire	[12:2]							w_mux_tx_cpld_len;
+wire	[6:0]							w_mux_tx_cpld_laddr;
+wire	[63:0]							w_mux_tx_cpld_data;
+wire	[2:0]                               w_mux_tx_cpld_tc;
+wire    [2:0]                               w_mux_tx_cpld_attr;
+wire    [1:0]                               w_mux_tx_cpld_at;
+wire    [7:0]                               w_mux_tx_cpld_be;
+wire    [7:0]                               w_mux_tx_cpld_func_num;
 
 always @ (posedge pcie_user_clk) begin 
 	if(!pcie_user_rst_n ) begin 
@@ -428,6 +479,56 @@ always @ (posedge pcie_user_clk) begin
 	end 
 end 
 
+
+assign w_tx_cpld_mux_start_bar2 = ~(r_tx_cpld_bar0_pending | w_tx_cpld_req) &
+								(r_tx_cpld_bar2_pending | w_bar2_tx_cpld_req);
+assign w_tx_cpld_mux_start = ~r_tx_cpld_mux_valid &
+							((r_tx_cpld_bar0_pending | w_tx_cpld_req) |
+							 (r_tx_cpld_bar2_pending | w_bar2_tx_cpld_req));
+assign w_tx_cpld_mux_bar2 = (r_tx_cpld_mux_valid == 1) ? r_tx_cpld_mux_bar2 : w_tx_cpld_mux_start_bar2;
+assign w_mux_tx_cpld_req = w_tx_cpld_mux_start;
+
+assign w_mux_tx_cpld_tag = w_tx_cpld_mux_bar2 ? w_bar2_tx_cpld_tag : w_tx_cpld_tag;
+assign w_mux_tx_cpld_req_id = w_tx_cpld_mux_bar2 ? w_bar2_tx_cpld_req_id : w_tx_cpld_req_id;
+assign w_mux_tx_cpld_len = w_tx_cpld_mux_bar2 ? w_bar2_tx_cpld_len : w_tx_cpld_len;
+assign w_mux_tx_cpld_laddr = w_tx_cpld_mux_bar2 ? w_bar2_tx_cpld_laddr : w_tx_cpld_laddr;
+assign w_mux_tx_cpld_data = w_tx_cpld_mux_bar2 ? w_bar2_tx_cpld_data : w_tx_cpld_data;
+assign w_mux_tx_cpld_tc = w_tx_cpld_mux_bar2 ? w_bar2_tx_cpld_tc : w_tx_cpld_tc;
+assign w_mux_tx_cpld_attr = w_tx_cpld_mux_bar2 ? w_bar2_tx_cpld_attr : w_tx_cpld_attr;
+assign w_mux_tx_cpld_at = w_tx_cpld_mux_bar2 ? w_bar2_tx_cpld_at : w_tx_cpld_at;
+assign w_mux_tx_cpld_be = w_tx_cpld_mux_bar2 ? w_bar2_tx_cpld_be : w_tx_cpld_be;
+assign w_mux_tx_cpld_func_num = w_tx_cpld_mux_bar2 ? w_bar2_tx_cpld_func_num : 8'h00;
+
+assign w_bar0_tx_cpld_req_ack = r_tx_cpld_mux_valid & ~r_tx_cpld_mux_bar2 & w_tx_cpld_req_ack;
+assign w_bar2_tx_cpld_req_ack = r_tx_cpld_mux_valid & r_tx_cpld_mux_bar2 & w_tx_cpld_req_ack;
+
+always @ (posedge pcie_user_clk or negedge pcie_user_rst_n)
+begin
+	if(pcie_user_rst_n == 0) begin
+		r_tx_cpld_mux_valid <= 0;
+		r_tx_cpld_mux_bar2 <= 0;
+		r_tx_cpld_bar0_pending <= 0;
+		r_tx_cpld_bar2_pending <= 0;
+	end
+	else begin
+		if(w_tx_cpld_req == 1 && !(r_tx_cpld_mux_valid == 1 && r_tx_cpld_mux_bar2 == 0))
+			r_tx_cpld_bar0_pending <= 1;
+		if(w_bar2_tx_cpld_req == 1 && !(r_tx_cpld_mux_valid == 1 && r_tx_cpld_mux_bar2 == 1))
+			r_tx_cpld_bar2_pending <= 1;
+
+		if(r_tx_cpld_mux_valid == 0 && w_tx_cpld_mux_start == 1) begin
+			r_tx_cpld_mux_valid <= 1;
+			r_tx_cpld_mux_bar2 <= w_tx_cpld_mux_start_bar2;
+			if(w_tx_cpld_mux_start_bar2 == 1)
+				r_tx_cpld_bar2_pending <= 0;
+			else
+				r_tx_cpld_bar0_pending <= 0;
+		end
+		else if(r_tx_cpld_mux_valid == 1 && w_tx_cpld_req_ack == 1) begin
+			r_tx_cpld_mux_valid <= 0;
+		end
+	end
+end
 pcie_cntl_slave # (
 	.C_PCIE_DATA_WIDTH						(C_PCIE_DATA_WIDTH)
 )
@@ -451,7 +552,7 @@ pcie_cntl_slave_inst0(
 	.tx_cpld_attr							(w_tx_cpld_attr),
 	.tx_cpld_at							    (w_tx_cpld_at),
 	.tx_cpld_be							    (w_tx_cpld_be),
-	.tx_cpld_req_ack						(w_tx_cpld_req_ack),
+	.tx_cpld_req_ack						(w_bar0_tx_cpld_req_ack),
 
 	.nvme_cc_en								(nvme_cc_en),
 	.nvme_cc_shn							(nvme_cc_shn),
@@ -492,6 +593,39 @@ pcie_cntl_slave_inst0(
 	.cq_head_update							(w_cq_head_update)
 );
 
+
+pcie_bar2_stream #(
+	.C_PCIE_DATA_WIDTH						(C_PCIE_DATA_WIDTH)
+)
+pcie_bar2_stream_inst0(
+	.pcie_user_clk							(pcie_user_clk),
+	.pcie_user_rst_n						(pcie_user_rst_n),
+
+	.mreq_fifo_wr_en						(w_bar2_mreq_fifo_wr_en),
+	.mreq_fifo_wr_data					(w_bar2_mreq_fifo_wr_data),
+	.req_be                                (w_bar2_req_be),
+
+	.tx_cpld_req							(w_bar2_tx_cpld_req),
+	.tx_cpld_tag							(w_bar2_tx_cpld_tag),
+	.tx_cpld_req_id						(w_bar2_tx_cpld_req_id),
+	.tx_cpld_len							(w_bar2_tx_cpld_len),
+	.tx_cpld_laddr						(w_bar2_tx_cpld_laddr),
+	.tx_cpld_data						(w_bar2_tx_cpld_data),
+	.tx_cpld_tc							(w_bar2_tx_cpld_tc),
+	.tx_cpld_attr						(w_bar2_tx_cpld_attr),
+	.tx_cpld_at							(w_bar2_tx_cpld_at),
+	.tx_cpld_be							(w_bar2_tx_cpld_be),
+		.tx_cpld_func_num					(w_bar2_tx_cpld_func_num),
+	.tx_cpld_req_ack					(w_bar2_tx_cpld_req_ack),
+
+	.bar2_reg_req						(bar2_reg_req),
+	.bar2_reg_wr						(bar2_reg_wr),
+	.bar2_reg_addr						(bar2_reg_addr),
+	.bar2_reg_wdata					(bar2_reg_wdata),
+	.bar2_reg_be						(bar2_reg_be),
+	.bar2_reg_ack						(bar2_reg_ack),
+	.bar2_reg_rdata					(bar2_reg_rdata)
+);
 pcie_hcmd # (
 	.P_SLOT_TAG_WIDTH						(P_SLOT_TAG_WIDTH), //slot_modified
 	.P_SLOT_WIDTH							(P_SLOT_WIDTH), //slot_modified
@@ -748,6 +882,10 @@ pcie_tans_if_inst0(
 
 	.req_be                                 (w_req_be),
 
+	.bar2_mreq_fifo_wr_en				(w_bar2_mreq_fifo_wr_en),
+	.bar2_mreq_fifo_wr_data			(w_bar2_mreq_fifo_wr_data),
+	.bar2_req_be                           (w_bar2_req_be),
+
 	.cpld0_fifo_tag							(w_cpld0_fifo_tag),
 	.cpld0_fifo_tag_last					(w_cpld0_fifo_tag_last),
 	.cpld0_fifo_wr_en						(w_cpld0_fifo_wr_en),
@@ -763,16 +901,17 @@ pcie_tans_if_inst0(
 	.cpld2_fifo_wr_en						(w_cpld2_fifo_wr_en),
 	.cpld2_fifo_wr_data						(w_cpld2_fifo_wr_data),
 
-	.tx_cpld_req							(w_tx_cpld_req),
-	.tx_cpld_tag							(w_tx_cpld_tag),
-	.tx_cpld_req_id							(w_tx_cpld_req_id),
-	.tx_cpld_len							(w_tx_cpld_len),
-	.tx_cpld_laddr							(w_tx_cpld_laddr),
-	.tx_cpld_data							(w_tx_cpld_data),
-	.tx_cpld_tc						     	(w_tx_cpld_tc),
-	.tx_cpld_attr							(w_tx_cpld_attr),
-	.tx_cpld_at							    (w_tx_cpld_at),
-	.tx_cpld_be							    (w_tx_cpld_be),
+	.tx_cpld_req							(w_mux_tx_cpld_req),
+	.tx_cpld_tag							(w_mux_tx_cpld_tag),
+	.tx_cpld_req_id							(w_mux_tx_cpld_req_id),
+	.tx_cpld_len							(w_mux_tx_cpld_len),
+	.tx_cpld_laddr							(w_mux_tx_cpld_laddr),
+	.tx_cpld_data							(w_mux_tx_cpld_data),
+	.tx_cpld_tc						     	(w_mux_tx_cpld_tc),
+	.tx_cpld_attr							(w_mux_tx_cpld_attr),
+	.tx_cpld_at							    (w_mux_tx_cpld_at),
+	.tx_cpld_be							    (w_mux_tx_cpld_be),
+		.tx_cpld_func_num						(w_mux_tx_cpld_func_num),
 	.tx_cpld_req_ack						(w_tx_cpld_req_ack),
 
 	.tx_mrd0_req							(w_tx_mrd0_req),
@@ -889,6 +1028,7 @@ nvme_irq_inst0
     .cfg_interrupt_msi_fail                  ( cfg_interrupt_msi_fail ), 
     .cfg_interrupt_msi_int                   ( cfg_interrupt_msi_int ),
     .cfg_interrupt_msi_pending_status_data_enable   ( cfg_interrupt_msi_pending_status_data_enable ),
+	    .cfg_interrupt_msi_function_number       ( cfg_interrupt_msi_function_number ),
     .cfg_interrupt_msi_pending_status        ( cfg_interrupt_msi_pending_status ),
 
     .cfg_interrupt_msix_enable               ( cfg_interrupt_msix_enable ), 
@@ -901,6 +1041,10 @@ nvme_irq_inst0
 	.nvme_intms_ivms						(w_nvme_intms_ivms),
 	.nvme_intmc_ivmc						(w_nvme_intmc_ivmc),
 	.cq_irq_status							(w_cq_irq_status),
+		.pf0_msi_irq_req					(bar2_pf0_msi_irq_req),
+		.pf0_msi_irq_vector				(bar2_pf0_msi_irq_vector),
+		.pf1_msi_irq_req					(bar2_pf1_msi_irq_req),
+		.pf1_msi_irq_vector				(bar2_pf1_msi_irq_vector),
 
 	.cq_rst_n								(cq_rst_n),
 	.cq_valid								(cq_valid),
@@ -935,5 +1079,522 @@ nvme_irq_inst0
 	.io_cq8_head_ptr						(w_io_cq8_head_ptr),
 	.cq_head_update							(w_cq_head_update)
 );
+
+endmodule
+
+
+/*
+----------------------------------------------------------------------------------
+BAR2 AXI-Stream completer path register target.
+BAR2 offsets map directly to the CPU register window decode.
+The last 32 bytes of BAR2 are kept as local debug/status registers.
+----------------------------------------------------------------------------------
+*/
+
+`timescale 1ns / 1ps
+
+module pcie_bar2_stream # (
+	parameter	C_PCIE_DATA_WIDTH			= 512,
+	parameter	C_BAR2_ADDR_WIDTH			= 18,
+	parameter	P_FIFO_DEPTH_WIDTH			= 5
+)
+(
+	input									pcie_user_clk,
+	input									pcie_user_rst_n,
+
+	input									mreq_fifo_wr_en,
+	input	[C_PCIE_DATA_WIDTH-1:0]			mreq_fifo_wr_data,
+	input	[7:0]							req_be,
+
+	output									tx_cpld_req,
+	output	[7:0]							tx_cpld_tag,
+	output	[15:0]							tx_cpld_req_id,
+	output	[12:2]							tx_cpld_len,
+	output	[6:0]							tx_cpld_laddr,
+	output	[63:0]							tx_cpld_data,
+	output	[2:0]							tx_cpld_tc,
+	output	[2:0]							tx_cpld_attr,
+	output	[1:0]							tx_cpld_at,
+	output	[7:0]							tx_cpld_be,
+	output	[7:0]							tx_cpld_func_num,
+	input									tx_cpld_req_ack,
+
+	output									bar2_reg_req,
+	output									bar2_reg_wr,
+	output	[C_BAR2_ADDR_WIDTH-1:0]			bar2_reg_addr,
+	output	[31:0]							bar2_reg_wdata,
+	output	[3:0]							bar2_reg_be,
+	input									bar2_reg_ack,
+	input	[31:0]							bar2_reg_rdata
+);
+
+localparam	P_FIFO_DATA_WIDTH			= C_PCIE_DATA_WIDTH + 8;
+localparam	P_FIFO_DEPTH				= (1 << P_FIFO_DEPTH_WIDTH);
+
+// Debug/status registers live at the end of the 256 KB BAR2 aperture by default.
+localparam	[2:0]	P_BAR2_DEBUG_MAGIC		= 3'h0; // 0x3ffe0: fixed magic/version
+localparam	[2:0]	P_BAR2_DEBUG_COUNTS		= 3'h1; // 0x3ffe4: {write_count, read_count}
+localparam	[2:0]	P_BAR2_DEBUG_LAST_ADDR	= 3'h2; // 0x3ffe8: last BAR2 request byte offset
+localparam	[2:0]	P_BAR2_DEBUG_LAST_WDATA	= 3'h3; // 0x3ffec: last memory-write payload dword
+localparam	[2:0]	P_BAR2_DEBUG_REQ_COUNT	= 3'h4; // 0x3fff0: total BAR2 requests
+localparam	[31:0]	P_BAR2_DEBUG_MAGIC_VALUE	= 32'hb202_0002;
+
+localparam	[3:0]	P_BAR2_FIRST_BEAT_DWORDS	= (C_PCIE_DATA_WIDTH == 512) ? 4'd12 :
+										  ((C_PCIE_DATA_WIDTH == 256) ? 4'd4 : 4'd1);
+
+localparam	S_IDLE						= 6'b000001;
+localparam	S_DECODE					= 6'b000010;
+localparam	S_WRITE						= 6'b000100;
+localparam	S_WRITE_GAP				= 6'b001000;
+localparam	S_READ						= 6'b010000;
+localparam	S_CPLD_ACK					= 6'b100000;
+
+reg		[5:0]							cur_state;
+reg		[5:0]							next_state;
+
+reg		[P_FIFO_DEPTH_WIDTH:0]			r_fifo_wr_ptr;
+reg		[P_FIFO_DEPTH_WIDTH:0]			r_fifo_rd_ptr;
+reg		[P_FIFO_DATA_WIDTH-1:0]			r_fifo [0:P_FIFO_DEPTH-1];
+
+wire									w_fifo_empty;
+wire									w_fifo_full;
+wire	[P_FIFO_DATA_WIDTH-1:0]			w_fifo_rd_data;
+wire									w_fifo_pop;
+
+reg		[C_PCIE_DATA_WIDTH-1:0]			r_mreq_data;
+reg		[7:0]							r_req_be;
+reg		[31:0]							r_rd_data;
+reg									r_tx_cpld_req;
+reg		[15:0]							r_req_count;
+reg		[15:0]							r_wr_count;
+reg		[15:0]							r_rd_count;
+reg		[C_BAR2_ADDR_WIDTH-1:0]			r_last_addr;
+reg		[31:0]							r_last_wdata;
+
+wire	[1:0]							w_addr_type;
+wire	[10:0]							w_dword_count;
+wire	[3:0]							w_req_type;
+wire	[15:0]							w_req_id;
+wire	[7:0]							w_tag;
+wire	[2:0]							w_tc;
+wire	[2:0]							w_attr;
+wire	[C_BAR2_ADDR_WIDTH-1:0]			w_bar2_addr;
+wire	[31:0]							w_write_data;
+wire	[C_BAR2_ADDR_WIDTH-1:0]			w_write_addr;
+wire	[31:0]							w_write_cur_data;
+wire	[3:0]							w_write_cur_be;
+wire	[3:0]							w_write_dw_count;
+wire									w_bar2_debug_hit;
+wire									w_write_debug_hit;
+wire									w_bar2_write_done;
+wire									w_bar2_read_done;
+wire									w_write_more_dwords;
+reg		[31:0]							r_debug_rdata;
+reg		[3:0]							r_write_dw_index;
+reg		[3:0]							r_write_dw_count;
+
+function [31:0] f_bar2_payload_dw;
+	input [C_PCIE_DATA_WIDTH-1:0] data;
+	input [3:0] index;
+	begin
+		case(index)
+			4'd0: f_bar2_payload_dw = data[159:128];
+			4'd1: f_bar2_payload_dw = data[191:160];
+			4'd2: f_bar2_payload_dw = data[223:192];
+			4'd3: f_bar2_payload_dw = data[255:224];
+			4'd4: f_bar2_payload_dw = data[287:256];
+			4'd5: f_bar2_payload_dw = data[319:288];
+			4'd6: f_bar2_payload_dw = data[351:320];
+			4'd7: f_bar2_payload_dw = data[383:352];
+			4'd8: f_bar2_payload_dw = data[415:384];
+			4'd9: f_bar2_payload_dw = data[447:416];
+			4'd10: f_bar2_payload_dw = data[479:448];
+			4'd11: f_bar2_payload_dw = data[511:480];
+			default: f_bar2_payload_dw = 32'h0;
+		endcase
+	end
+endfunction
+
+assign w_fifo_empty = (r_fifo_wr_ptr == r_fifo_rd_ptr);
+assign w_fifo_full = ((r_fifo_wr_ptr[P_FIFO_DEPTH_WIDTH] ^ r_fifo_rd_ptr[P_FIFO_DEPTH_WIDTH]) &
+						(r_fifo_wr_ptr[P_FIFO_DEPTH_WIDTH-1:0] == r_fifo_rd_ptr[P_FIFO_DEPTH_WIDTH-1:0]));
+assign w_fifo_rd_data = r_fifo[r_fifo_rd_ptr[P_FIFO_DEPTH_WIDTH-1:0]];
+assign w_fifo_pop = (cur_state == S_IDLE) & ~w_fifo_empty;
+
+assign w_addr_type = r_mreq_data[1:0];
+assign w_dword_count = r_mreq_data[74:64];
+assign w_req_type = r_mreq_data[78:75];
+assign w_req_id = r_mreq_data[95:80];
+assign w_tag = r_mreq_data[103:96];
+	assign w_target_function = r_mreq_data[111:104];
+assign w_tc = r_mreq_data[123:121];
+assign w_attr = r_mreq_data[126:124];
+assign w_bar2_addr = r_mreq_data[C_BAR2_ADDR_WIDTH-1:0];
+assign w_write_data = r_mreq_data[159:128];
+assign w_write_dw_count = (w_dword_count[10:0] == 11'd0) ? P_BAR2_FIRST_BEAT_DWORDS :
+							((w_dword_count[10:0] > {7'b0, P_BAR2_FIRST_BEAT_DWORDS}) ?
+								P_BAR2_FIRST_BEAT_DWORDS : w_dword_count[3:0]);
+assign w_write_addr = w_bar2_addr + {{(C_BAR2_ADDR_WIDTH-6){1'b0}}, r_write_dw_index, 2'b00};
+assign w_write_cur_data = f_bar2_payload_dw(r_mreq_data, r_write_dw_index);
+assign w_write_cur_be = (r_write_dw_count == 4'd1) ? r_req_be[3:0] :
+						((r_write_dw_index == 4'd0) ? r_req_be[3:0] :
+						(((r_write_dw_index + 4'd1) == r_write_dw_count) ? r_req_be[7:4] : 4'hf));
+assign w_bar2_debug_hit = &w_bar2_addr[C_BAR2_ADDR_WIDTH-1:5];
+assign w_write_debug_hit = &w_write_addr[C_BAR2_ADDR_WIDTH-1:5];
+assign w_bar2_write_done = w_write_debug_hit | bar2_reg_ack;
+assign w_bar2_read_done = w_bar2_debug_hit | bar2_reg_ack;
+assign w_write_more_dwords = ((r_write_dw_index + 4'd1) < r_write_dw_count);
+
+assign bar2_reg_req = (((cur_state == S_WRITE) && (w_write_debug_hit == 0)) ||
+						((cur_state == S_READ) && (w_bar2_debug_hit == 0)));
+assign bar2_reg_wr = (cur_state == S_WRITE);
+assign bar2_reg_addr = (cur_state == S_WRITE) ? w_write_addr : w_bar2_addr;
+assign bar2_reg_wdata = (cur_state == S_WRITE) ? w_write_cur_data : w_write_data;
+assign bar2_reg_be = (cur_state == S_WRITE) ? w_write_cur_be : r_req_be[3:0];
+
+assign tx_cpld_req = r_tx_cpld_req;
+assign tx_cpld_tag = w_tag;
+assign tx_cpld_req_id = w_req_id;
+assign tx_cpld_len = {9'b0, (w_dword_count[1:0] == 2'b00) ? 2'b01 : w_dword_count[1:0]};
+assign tx_cpld_laddr = w_bar2_addr[6:0];
+assign tx_cpld_data = {32'b0, r_rd_data};
+assign tx_cpld_tc = w_tc;
+assign tx_cpld_attr = w_attr;
+assign tx_cpld_at = w_addr_type;
+assign tx_cpld_be = r_req_be;
+	assign tx_cpld_func_num = w_target_function;
+
+always @ (*)
+begin
+	r_debug_rdata = 32'h0;
+	case(w_bar2_addr[4:2])
+		P_BAR2_DEBUG_MAGIC: r_debug_rdata = P_BAR2_DEBUG_MAGIC_VALUE;
+		P_BAR2_DEBUG_COUNTS: r_debug_rdata = {r_wr_count, r_rd_count};
+		P_BAR2_DEBUG_LAST_ADDR: r_debug_rdata = {{(32-C_BAR2_ADDR_WIDTH){1'b0}}, r_last_addr};
+		P_BAR2_DEBUG_LAST_WDATA: r_debug_rdata = r_last_wdata;
+		P_BAR2_DEBUG_REQ_COUNT: r_debug_rdata = {16'b0, r_req_count};
+	endcase
+end
+
+always @ (posedge pcie_user_clk or negedge pcie_user_rst_n)
+begin
+	if(pcie_user_rst_n == 0) begin
+		r_fifo_wr_ptr <= 0;
+		r_fifo_rd_ptr <= 0;
+	end
+	else begin
+		if(mreq_fifo_wr_en == 1 && w_fifo_full == 0) begin
+			r_fifo[r_fifo_wr_ptr[P_FIFO_DEPTH_WIDTH-1:0]] <= {req_be, mreq_fifo_wr_data};
+			r_fifo_wr_ptr <= r_fifo_wr_ptr + 1;
+		end
+
+		if(w_fifo_pop == 1)
+			r_fifo_rd_ptr <= r_fifo_rd_ptr + 1;
+	end
+end
+
+always @ (posedge pcie_user_clk or negedge pcie_user_rst_n)
+begin
+	if(pcie_user_rst_n == 0)
+		cur_state <= S_IDLE;
+	else
+		cur_state <= next_state;
+end
+
+always @ (*)
+begin
+	case(cur_state)
+		S_IDLE: begin
+			if(w_fifo_empty == 0)
+				next_state <= S_DECODE;
+			else
+				next_state <= S_IDLE;
+		end
+		S_DECODE: begin
+			if(w_req_type == 4'b0001)
+				next_state <= S_WRITE;
+			else if(w_req_type == 4'b0000)
+				next_state <= S_READ;
+			else
+				next_state <= S_IDLE;
+		end
+		S_WRITE: begin
+			if(w_bar2_write_done == 1) begin
+				if(w_write_more_dwords == 1)
+					next_state <= S_WRITE_GAP;
+				else
+					next_state <= S_IDLE;
+			end
+			else
+				next_state <= S_WRITE;
+		end
+		S_WRITE_GAP: begin
+			next_state <= S_WRITE;
+		end
+		S_READ: begin
+			if(w_bar2_read_done == 1)
+				next_state <= S_CPLD_ACK;
+			else
+				next_state <= S_READ;
+		end
+		S_CPLD_ACK: begin
+			if(tx_cpld_req_ack == 1)
+				next_state <= S_IDLE;
+			else
+				next_state <= S_CPLD_ACK;
+		end
+		default: begin
+			next_state <= S_IDLE;
+		end
+	endcase
+end
+
+always @ (posedge pcie_user_clk or negedge pcie_user_rst_n)
+begin
+	if(pcie_user_rst_n == 0) begin
+		r_mreq_data <= 0;
+		r_req_be <= 0;
+		r_rd_data <= 0;
+		r_tx_cpld_req <= 0;
+		r_req_count <= 0;
+		r_wr_count <= 0;
+		r_rd_count <= 0;
+		r_last_addr <= 0;
+		r_last_wdata <= 0;
+		r_write_dw_index <= 0;
+		r_write_dw_count <= 0;
+	end
+	else begin
+		case(cur_state)
+			S_IDLE: begin
+				r_tx_cpld_req <= 0;
+				if(w_fifo_empty == 0) begin
+					r_mreq_data <= w_fifo_rd_data[C_PCIE_DATA_WIDTH-1:0];
+					r_req_be <= w_fifo_rd_data[P_FIFO_DATA_WIDTH-1:C_PCIE_DATA_WIDTH];
+				end
+			end
+			S_DECODE: begin
+				r_req_count <= r_req_count + 1;
+				r_last_addr <= w_bar2_addr;
+				r_write_dw_index <= 0;
+				r_write_dw_count <= w_write_dw_count;
+				if(w_req_type == 4'b0001) begin
+					r_wr_count <= r_wr_count + 1;
+					r_last_wdata <= w_write_data;
+				end
+				else if(w_req_type == 4'b0000) begin
+					r_rd_count <= r_rd_count + 1;
+				end
+			end
+			S_WRITE: begin
+				if((w_bar2_write_done == 1) && (w_write_more_dwords == 1))
+					r_write_dw_index <= r_write_dw_index + 1;
+			end
+			S_READ: begin
+				if(w_bar2_read_done == 1) begin
+					r_rd_data <= (w_bar2_debug_hit == 1) ? r_debug_rdata : bar2_reg_rdata;
+					r_tx_cpld_req <= 1;
+				end
+			end
+			S_CPLD_ACK: begin
+				if(tx_cpld_req_ack == 1)
+					r_tx_cpld_req <= 0;
+				else
+					r_tx_cpld_req <= 1;
+			end
+			default: begin
+				r_tx_cpld_req <= 0;
+			end
+		endcase
+	end
+end
+
+endmodule
+
+
+
+
+/*
+----------------------------------------------------------------------------------
+Single-outstanding BAR2 register request CDC bridge.
+This is not an AXI-Lite master; it carries one direct register request at a time.
+----------------------------------------------------------------------------------
+*/
+
+module bar2_reg_cdc # (
+	parameter	C_BAR2_ADDR_WIDTH			= 18
+)
+(
+	input									pcie_clk,
+	input									pcie_rst_n,
+	input									pcie_reg_req,
+	input									pcie_reg_wr,
+	input	[C_BAR2_ADDR_WIDTH-1:0]			pcie_reg_addr,
+	input	[31:0]							pcie_reg_wdata,
+	input	[3:0]							pcie_reg_be,
+	output	reg							pcie_reg_ack,
+	output	reg	[31:0]						pcie_reg_rdata,
+
+	input									cpu_clk,
+	input									cpu_rst_n,
+	output	reg							cpu_reg_req,
+	output									cpu_reg_wr,
+	output	[C_BAR2_ADDR_WIDTH-1:0]			cpu_reg_addr,
+	output	[31:0]							cpu_reg_wdata,
+	output	[3:0]							cpu_reg_be,
+	input									cpu_reg_ack,
+	input	[31:0]							cpu_reg_rdata
+);
+
+reg										r_src_busy;
+reg										r_src_req_toggle;
+reg										r_src_req_d;
+reg										r_src_resp_seen;
+reg										r_src_wr;
+reg		[C_BAR2_ADDR_WIDTH-1:0]			r_src_addr;
+reg		[31:0]							r_src_wdata;
+reg		[3:0]							r_src_be;
+
+(* ASYNC_REG = "TRUE" *) reg [2:0]		r_resp_toggle_sync;
+(* ASYNC_REG = "TRUE" *) reg [2:0]		r_req_toggle_sync;
+
+reg										r_dst_busy;
+reg										r_dst_req_seen;
+reg										r_dst_resp_toggle;
+reg										r_dst_wr;
+reg		[C_BAR2_ADDR_WIDTH-1:0]			r_dst_addr;
+reg		[31:0]							r_dst_wdata;
+reg		[3:0]							r_dst_be;
+reg		[31:0]							r_dst_rdata;
+
+wire									w_dst_new_req;
+
+assign w_dst_new_req = (r_req_toggle_sync[2] != r_dst_req_seen);
+assign cpu_reg_wr = r_dst_wr;
+assign cpu_reg_addr = r_dst_addr;
+assign cpu_reg_wdata = r_dst_wdata;
+assign cpu_reg_be = r_dst_be;
+
+always @ (posedge pcie_clk or negedge pcie_rst_n)
+begin
+	if(pcie_rst_n == 0) begin
+		r_src_busy <= 0;
+		r_src_req_toggle <= 0;
+		r_src_req_d <= 0;
+		r_src_resp_seen <= 0;
+		r_src_wr <= 0;
+		r_src_addr <= 0;
+		r_src_wdata <= 0;
+		r_src_be <= 0;
+		r_resp_toggle_sync <= 0;
+		pcie_reg_ack <= 0;
+		pcie_reg_rdata <= 0;
+	end
+	else begin
+		r_resp_toggle_sync <= {r_resp_toggle_sync[1:0], r_dst_resp_toggle};
+		r_src_req_d <= pcie_reg_req;
+		pcie_reg_ack <= 0;
+
+		if((r_src_busy == 1) && (r_resp_toggle_sync[2] != r_src_resp_seen)) begin
+			r_src_busy <= 0;
+			r_src_resp_seen <= r_resp_toggle_sync[2];
+			pcie_reg_rdata <= r_dst_rdata;
+			pcie_reg_ack <= 1;
+		end
+		else if((r_src_busy == 0) && (pcie_reg_req == 1) && (r_src_req_d == 0)) begin
+			r_src_busy <= 1;
+			r_src_wr <= pcie_reg_wr;
+			r_src_addr <= pcie_reg_addr;
+			r_src_wdata <= pcie_reg_wdata;
+			r_src_be <= pcie_reg_be;
+			r_src_req_toggle <= ~r_src_req_toggle;
+		end
+	end
+end
+
+always @ (posedge cpu_clk or negedge cpu_rst_n)
+begin
+	if(cpu_rst_n == 0) begin
+		r_req_toggle_sync <= 0;
+		r_dst_busy <= 0;
+		r_dst_req_seen <= 0;
+		r_dst_resp_toggle <= 0;
+		r_dst_wr <= 0;
+		r_dst_addr <= 0;
+		r_dst_wdata <= 0;
+		r_dst_be <= 0;
+		r_dst_rdata <= 0;
+		cpu_reg_req <= 0;
+	end
+	else begin
+		r_req_toggle_sync <= {r_req_toggle_sync[1:0], r_src_req_toggle};
+		cpu_reg_req <= 0;
+
+		if((r_dst_busy == 0) && (w_dst_new_req == 1)) begin
+			r_dst_busy <= 1;
+			r_dst_req_seen <= r_req_toggle_sync[2];
+			r_dst_wr <= r_src_wr;
+			r_dst_addr <= r_src_addr;
+			r_dst_wdata <= r_src_wdata;
+			r_dst_be <= r_src_be;
+			cpu_reg_req <= 1;
+		end
+		else if((r_dst_busy == 1) && (cpu_reg_ack == 1)) begin
+			r_dst_busy <= 0;
+			r_dst_rdata <= cpu_reg_rdata;
+			r_dst_resp_toggle <= ~r_dst_resp_toggle;
+		end
+	end
+end
+
+endmodule
+
+
+/*
+----------------------------------------------------------------------------------
+Toggle-based BAR2 MSI event CDC. The CPU side updates vector before toggling req.
+----------------------------------------------------------------------------------
+*/
+
+module bar2_msi_cdc
+(
+	input									cpu_clk,
+	input									cpu_rst_n,
+	input									cpu_req_toggle,
+	input	[8:0]							cpu_vector,
+	input									pcie_clk,
+	input									pcie_rst_n,
+	output	reg							pcie_req,
+	output	[8:0]						pcie_vector
+);
+
+(* ASYNC_REG = "TRUE" *) reg [2:0]	r_req_toggle_sync;
+(* ASYNC_REG = "TRUE" *) reg [8:0]	r_vector_meta;
+(* ASYNC_REG = "TRUE" *) reg [8:0]	r_vector_sync;
+reg									r_req_toggle_seen;
+
+assign pcie_vector = r_vector_sync;
+
+always @ (posedge pcie_clk or negedge pcie_rst_n)
+begin
+	if(pcie_rst_n == 0) begin
+		r_req_toggle_sync <= 0;
+		r_vector_meta <= 9'b000000001;
+		r_vector_sync <= 9'b000000001;
+		r_req_toggle_seen <= 0;
+		pcie_req <= 0;
+	end
+	else begin
+		r_req_toggle_sync <= {r_req_toggle_sync[1:0], cpu_req_toggle};
+		r_vector_meta <= cpu_vector;
+		r_vector_sync <= r_vector_meta;
+		pcie_req <= 0;
+
+		if(r_req_toggle_sync[2] != r_req_toggle_seen) begin
+			r_req_toggle_seen <= r_req_toggle_sync[2];
+			pcie_req <= 1;
+		end
+	end
+end
 
 endmodule

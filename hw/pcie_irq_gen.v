@@ -68,12 +68,13 @@ module pcie_irq_gen # (
 
   // MSI Interrupt Interface
 
-  input                            cfg_interrupt_msi_enable,
+  input                    [3:0]   cfg_interrupt_msi_enable,
   input                            cfg_interrupt_msi_sent,
   input                            cfg_interrupt_msi_fail,
   output wire             [31:0]   cfg_interrupt_msi_int,  
   output wire                      cfg_interrupt_msi_pending_status_data_enable,
   output wire             [31:0]   cfg_interrupt_msi_pending_status,
+	  output wire             [7:0]    cfg_interrupt_msi_function_number,
 
   //MSI-X Interrupt Interface
 
@@ -87,6 +88,7 @@ module pcie_irq_gen # (
 	input									pcie_legacy_irq_set,
 	input									pcie_msi_irq_set,
 	input	[8:0]							pcie_irq_vector,
+		input	[7:0]							pcie_irq_function,
 	input									pcie_legacy_irq_clear,
 	output									pcie_irq_done
 );
@@ -113,6 +115,7 @@ reg                                         r_cfg_interrupt_msi_pending_status_d
 reg     [31:0]                              r_cfg_interrupt_msi_pending_status;
 
 reg		[8:0]								r_pcie_irq_vector;
+reg		[7:0]							r_pcie_irq_function;
 reg											r_pcie_irq_done;
 
 assign cfg_interrupt_pending = r_cfg_interrupt_pending;
@@ -120,6 +123,7 @@ assign cfg_interrupt_int     = r_cfg_interrupt_int;
 
 assign cfg_interrupt_msi_int                        = r_cfg_interrupt_msi_int;
 assign cfg_interrupt_msi_pending_status_data_enable = r_cfg_interrupt_msi_pending_status_data_enable;
+assign cfg_interrupt_msi_function_number             = (cur_state == S_IDLE) ? pcie_irq_function : r_pcie_irq_function;
 assign cfg_interrupt_msi_pending_status             = r_cfg_interrupt_msi_pending_status;
 
 assign cfg_interrupt_msix_int     = 1'b0;
@@ -195,6 +199,7 @@ begin
 	case(cur_state)
 		S_IDLE: begin
 			r_pcie_irq_vector <= pcie_irq_vector;
+			r_pcie_irq_function <= pcie_irq_function;
 		end
 		S_SEND_MSI: begin
 

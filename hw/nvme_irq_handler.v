@@ -59,11 +59,15 @@ module nvme_irq_handler # (
 	input									pcie_user_rst_n,
 
 	input	[3:0]							cfg_command,
-	input									cfg_interrupt_msi_enable,
+	input	[3:0]							cfg_interrupt_msi_enable,
 
 	input									nvme_intms_ivms,
 	input									nvme_intmc_ivmc,
 	output									cq_irq_status,
+		input										pf0_msi_irq_req,
+		input	[8:0]								pf0_msi_irq_vector,
+		input										pf1_msi_irq_req,
+		input	[8:0]								pf1_msi_irq_vector,
 
 	input	[8:0]							cq_rst_n,
 	input	[8:0]							cq_valid,
@@ -101,6 +105,7 @@ module nvme_irq_handler # (
 	output									pcie_legacy_irq_set,
 	output									pcie_msi_irq_set,
 	output	[8:0]							pcie_irq_vector,
+		output	[7:0]							pcie_irq_function,
 	output									pcie_legacy_irq_clear,
 	input									pcie_irq_done
 );
@@ -119,7 +124,7 @@ reg		[5:0]								cur_state;
 reg		[5:0]								next_state;
 
 reg											r_pcie_irq_en;
-reg											r_pcie_msi_en;
+reg		[3:0]							r_pcie_msi_en;
 
 wire	[8:0]								w_cq_legacy_irq_status;
 reg											r_cq_legacy_irq_req;
@@ -128,18 +133,28 @@ wire	[8:0]								w_cq_msi_irq_mask;
 reg		[8:0]								r_cq_msi_irq_sel;
 wire										w_cq_msi_irq_req;
 reg		[8:0]								r_cq_msi_irq_ack;
+reg										r_pf0_msi_irq_pending;
+reg		[8:0]								r_pf0_msi_irq_vector;
+reg										r_pf1_msi_irq_pending;
+reg		[8:0]								r_pf1_msi_irq_vector;
+wire	[8:0]								w_pf0_msi_irq_vector;
+wire	[8:0]								w_pf1_msi_irq_vector;
 reg											r_pcie_msi_irq_set;
 reg		[8:0]								r_pcie_irq_vector;
+reg		[7:0]								r_pcie_irq_function;
 reg											r_pcie_legacy_irq_set;
 reg		[7:0]								r_legacy_irq_timer;
 
 assign w_cq_msi_irq_mask = {r_cq_msi_irq_sel[7:0], r_cq_msi_irq_sel[8]};
 assign w_cq_msi_irq_req = ((w_cq_msi_irq_status & w_cq_msi_irq_mask) != 0);
+assign w_pf0_msi_irq_vector = (r_pf0_msi_irq_vector == 9'b0) ? 9'b000000001 : r_pf0_msi_irq_vector;
+assign w_pf1_msi_irq_vector = (r_pf1_msi_irq_vector == 9'b0) ? 9'b000000001 : r_pf1_msi_irq_vector;
 
 assign pcie_legacy_irq_set = r_pcie_legacy_irq_set;
 assign pcie_msi_irq_set = r_pcie_msi_irq_set;
 assign pcie_irq_vector = r_pcie_irq_vector;
-assign pcie_legacy_irq_clear = ((nvme_intms_ivms | nvme_intmc_ivmc) | (~r_cq_legacy_irq_req | ~r_pcie_irq_en) | r_pcie_msi_en);
+assign pcie_irq_function = r_pcie_irq_function;
+assign pcie_legacy_irq_clear = ((nvme_intms_ivms | nvme_intmc_ivmc) | (~r_cq_legacy_irq_req | ~r_pcie_irq_en) | r_pcie_msi_en[0]);
 assign cq_irq_status = r_pcie_legacy_irq_set;
 
 always @ (posedge pcie_user_clk)
@@ -147,6 +162,33 @@ begin
 	r_pcie_irq_en <= ~cfg_command[3];
 	r_pcie_msi_en <= cfg_interrupt_msi_enable;
 	r_cq_legacy_irq_req <= (w_cq_legacy_irq_status != 0);
+end
+
+always @ (posedge pcie_user_clk or negedge pcie_user_rst_n)
+begin
+	if(pcie_user_rst_n == 0) begin
+		r_pf0_msi_irq_pending <= 0;
+		r_pf0_msi_irq_vector <= 9'b000000001;
+		r_pf1_msi_irq_pending <= 0;
+		r_pf1_msi_irq_vector <= 9'b000000001;
+	end
+	else begin
+		if(pf0_msi_irq_req == 1'b1) begin
+			r_pf0_msi_irq_pending <= 1;
+			r_pf0_msi_irq_vector <= (pf0_msi_irq_vector == 9'b0) ? 9'b000000001 : pf0_msi_irq_vector;
+		end
+		if(pf1_msi_irq_req == 1'b1) begin
+			r_pf1_msi_irq_pending <= 1;
+			r_pf1_msi_irq_vector <= (pf1_msi_irq_vector == 9'b0) ? 9'b000000001 : pf1_msi_irq_vector;
+		end
+
+		if(cur_state == S_CQ_MSI_IRQ_MASK) begin
+			if(r_pf1_msi_irq_pending == 1'b1)
+				r_pf1_msi_irq_pending <= 0;
+			else if(r_pf0_msi_irq_pending == 1'b1)
+				r_pf0_msi_irq_pending <= 0;
+		end
+	end
 end
 
 always @ (posedge pcie_user_clk or negedge pcie_user_rst_n)
@@ -161,11 +203,9 @@ always @ (*)
 begin
 	case(cur_state)
 		S_IDLE: begin
-			if(r_pcie_msi_en == 1) begin
-				if((w_cq_msi_irq_req | w_cq_msi_irq_status[0]) == 1)
-					next_state <= S_PCIE_MSI_IRQ_SET;
-				else
-					next_state <= S_IDLE;
+			if(((r_pf1_msi_irq_pending == 1'b1) && (r_pcie_msi_en[1] == 1'b1)) ||
+				(((r_pf0_msi_irq_pending | w_cq_msi_irq_req | w_cq_msi_irq_status[0]) == 1'b1) && (r_pcie_msi_en[0] == 1'b1))) begin
+				next_state <= S_PCIE_MSI_IRQ_SET;
 			end
 			else if(r_pcie_irq_en == 1)begin
 				if(r_cq_legacy_irq_req == 1)
@@ -270,17 +310,29 @@ end
 
 always @ (*)
 begin
-	case(r_cq_msi_irq_sel)  // synthesis parallel_case full_case
-		9'b000000001: r_pcie_irq_vector <= 9'b000000001;
-		9'b000000010: r_pcie_irq_vector <= 9'b000000001 << io_cq1_iv;
-		9'b000000100: r_pcie_irq_vector <= 9'b000000001 << io_cq2_iv;
-		9'b000001000: r_pcie_irq_vector <= 9'b000000001 << io_cq3_iv;
-		9'b000010000: r_pcie_irq_vector <= 9'b000000001 << io_cq4_iv;
-		9'b000100000: r_pcie_irq_vector <= 9'b000000001 << io_cq5_iv;
-		9'b001000000: r_pcie_irq_vector <= 9'b000000001 << io_cq6_iv;
-		9'b010000000: r_pcie_irq_vector <= 9'b000000001 << io_cq7_iv;
-		9'b100000000: r_pcie_irq_vector <= 9'b000000001 << io_cq8_iv;
-	endcase
+	if(r_pf1_msi_irq_pending == 1'b1) begin
+		r_pcie_irq_vector <= w_pf1_msi_irq_vector;
+		r_pcie_irq_function <= 8'h1;
+	end
+	else if(r_pf0_msi_irq_pending == 1'b1) begin
+		r_pcie_irq_vector <= w_pf0_msi_irq_vector;
+		r_pcie_irq_function <= 8'h0;
+	end
+	else begin
+		r_pcie_irq_function <= 8'h0;
+		case(r_cq_msi_irq_sel)  // synthesis parallel_case full_case
+			9'b000000001: r_pcie_irq_vector <= 9'b000000001;
+			9'b000000010: r_pcie_irq_vector <= 9'b000000001 << io_cq1_iv;
+			9'b000000100: r_pcie_irq_vector <= 9'b000000001 << io_cq2_iv;
+			9'b000001000: r_pcie_irq_vector <= 9'b000000001 << io_cq3_iv;
+			9'b000010000: r_pcie_irq_vector <= 9'b000000001 << io_cq4_iv;
+			9'b000100000: r_pcie_irq_vector <= 9'b000000001 << io_cq5_iv;
+			9'b001000000: r_pcie_irq_vector <= 9'b000000001 << io_cq6_iv;
+			9'b010000000: r_pcie_irq_vector <= 9'b000000001 << io_cq7_iv;
+			9'b100000000: r_pcie_irq_vector <= 9'b000000001 << io_cq8_iv;
+			default: r_pcie_irq_vector <= 9'b000000001;
+		endcase
+	end
 end
  
 /*
@@ -316,7 +368,7 @@ begin
 		S_CQ_MSI_IRQ_MASK: begin
 			r_pcie_legacy_irq_set <= 0;
 			r_pcie_msi_irq_set <= 0;
-			r_cq_msi_irq_ack <= r_cq_msi_irq_sel;
+			r_cq_msi_irq_ack <= ((r_pf1_msi_irq_pending | r_pf0_msi_irq_pending) == 1'b1) ? 9'b0 : r_cq_msi_irq_sel;
 		end
 		S_CQ_IRQ_DONE: begin
 			r_pcie_legacy_irq_set <= 0;
@@ -338,7 +390,7 @@ nvme_cq_check_inst0
 	.pcie_user_clk									(pcie_user_clk),
 	.pcie_user_rst_n								(pcie_user_rst_n),
 
-	.pcie_msi_en									(r_pcie_msi_en),
+	.pcie_msi_en									(r_pcie_msi_en[0]),
 
 	.cq_rst_n										(cq_rst_n[0]),
 	.cq_valid										(cq_valid[0]),
@@ -359,7 +411,7 @@ nvme_cq_check_inst1
 	.pcie_user_clk									(pcie_user_clk),
 	.pcie_user_rst_n								(pcie_user_rst_n),
 
-	.pcie_msi_en									(r_pcie_msi_en),
+	.pcie_msi_en									(r_pcie_msi_en[0]),
 
 	.cq_rst_n										(cq_rst_n[1]),
 	.cq_valid										(cq_valid[1]),
@@ -380,7 +432,7 @@ nvme_cq_check_inst2
 	.pcie_user_clk									(pcie_user_clk),
 	.pcie_user_rst_n								(pcie_user_rst_n),
 
-	.pcie_msi_en									(r_pcie_msi_en),
+	.pcie_msi_en									(r_pcie_msi_en[0]),
 
 	.cq_rst_n										(cq_rst_n[2]),
 	.cq_valid										(cq_valid[2]),
@@ -402,7 +454,7 @@ nvme_cq_check_inst3
 	.pcie_user_clk									(pcie_user_clk),
 	.pcie_user_rst_n								(pcie_user_rst_n),
 
-	.pcie_msi_en									(r_pcie_msi_en),
+	.pcie_msi_en									(r_pcie_msi_en[0]),
 
 	.cq_rst_n										(cq_rst_n[3]),
 	.cq_valid										(cq_valid[3]),
@@ -424,7 +476,7 @@ nvme_cq_check_inst4
 	.pcie_user_clk									(pcie_user_clk),
 	.pcie_user_rst_n								(pcie_user_rst_n),
 
-	.pcie_msi_en									(r_pcie_msi_en),
+	.pcie_msi_en									(r_pcie_msi_en[0]),
 
 	.cq_rst_n										(cq_rst_n[4]),
 	.cq_valid										(cq_valid[4]),
@@ -446,7 +498,7 @@ nvme_cq_check_inst5
 	.pcie_user_clk									(pcie_user_clk),
 	.pcie_user_rst_n								(pcie_user_rst_n),
 
-	.pcie_msi_en									(r_pcie_msi_en),
+	.pcie_msi_en									(r_pcie_msi_en[0]),
 
 	.cq_rst_n										(cq_rst_n[5]),
 	.cq_valid										(cq_valid[5]),
@@ -468,7 +520,7 @@ nvme_cq_check_inst6
 	.pcie_user_clk									(pcie_user_clk),
 	.pcie_user_rst_n								(pcie_user_rst_n),
 
-	.pcie_msi_en									(r_pcie_msi_en),
+	.pcie_msi_en									(r_pcie_msi_en[0]),
 
 	.cq_rst_n										(cq_rst_n[6]),
 	.cq_valid										(cq_valid[6]),
@@ -490,7 +542,7 @@ nvme_cq_check_inst7
 	.pcie_user_clk									(pcie_user_clk),
 	.pcie_user_rst_n								(pcie_user_rst_n),
 
-	.pcie_msi_en									(r_pcie_msi_en),
+	.pcie_msi_en									(r_pcie_msi_en[0]),
 
 	.cq_rst_n										(cq_rst_n[7]),
 	.cq_valid										(cq_valid[7]),
@@ -512,7 +564,7 @@ nvme_cq_check_inst8
 	.pcie_user_clk									(pcie_user_clk),
 	.pcie_user_rst_n								(pcie_user_rst_n),
 
-	.pcie_msi_en									(r_pcie_msi_en),
+	.pcie_msi_en									(r_pcie_msi_en[0]),
 
 	.cq_rst_n										(cq_rst_n[8]),
 	.cq_valid										(cq_valid[8]),
