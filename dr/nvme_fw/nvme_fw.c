@@ -65,7 +65,7 @@ static bool run_firmware = true;
 module_param(run_firmware, bool, 0644);
 MODULE_PARM_DESC(run_firmware, "run firmware emulation in the PF1 kernel driver");
 
-static uint fw_poll_us = 50;
+static uint fw_poll_us = 1;
 module_param(fw_poll_us, uint, 0644);
 MODULE_PARM_DESC(fw_poll_us, "firmware worker idle poll interval in microseconds");
 
@@ -80,6 +80,10 @@ MODULE_PARM_DESC(fw_enable_dma_data, "firmware worker uses DMA to fill admin dat
 static bool fw_enable_io_dma_data = true;
 module_param(fw_enable_io_dma_data, bool, 0644);
 MODULE_PARM_DESC(fw_enable_io_dma_data, "firmware worker uses DMA to fill IO read buffers");
+
+static bool fw_auto_io_cpl = true;
+module_param(fw_auto_io_cpl, bool, 0644);
+MODULE_PARM_DESC(fw_auto_io_cpl, "use hardware auto-DMA completion for IO commands");
 
 static bool fw_verbose_io;
 module_param(fw_verbose_io, bool, 0644);
@@ -829,6 +833,15 @@ static int fw_submit_batch_wait(struct nvme_fw_dev *fw,
 	return -ETIMEDOUT;
 }
 
+
+static int fw_submit_batch_nowait(struct nvme_fw_dev *fw,
+				  struct nvme_fw_dma_batch *batch)
+{
+	if (!batch->count)
+		return 0;
+	return fw_submit_batch(fw, batch);
+}
+
 static int fw_dma_stage_to_card_at(struct nvme_fw_dev *fw, u64 dev_addr, u32 len)
 {
 	struct nvme_fw_dma_batch *batch;
@@ -888,6 +901,37 @@ static int fw_dma_card_to_prp_from(struct nvme_fw_dev *fw, u64 dev_addr,
 		batch->count = 2;
 	}
 	ret = fw_submit_batch_wait(fw, batch);
+	kfree(batch);
+	return ret;
+}
+
+
+static int fw_submit_auto_io_dma(struct nvme_fw_dev *fw,
+				 const struct nvme_fw_cmd *cmd,
+				 u64 dev_addr, u32 len, bool tx)
+{
+	struct nvme_fw_dma_batch *batch;
+	struct nvme_fw_dma_desc *d;
+	int ret;
+
+	if (!len || len > NVME_FW_STAGE_SIZE || (len & 0x3u))
+		return -EINVAL;
+	batch = kzalloc(sizeof(*batch), GFP_KERNEL);
+	if (!batch)
+		return -ENOMEM;
+
+	d = &batch->desc[0];
+	batch->count = 1;
+	d->type = NVME_FW_DMA_AUTO_TYPE;
+	d->direction = tx ? NVME_FW_DMA_TX_DIRECTION : NVME_FW_DMA_RX_DIRECTION;
+	d->auto_completion = 1;
+	d->slot = cmd->slot;
+	d->cid = fw_cmd_cid(cmd);
+	d->len = len;
+	d->cmd_4k_offset = 0;
+	d->dev_addr = dev_addr;
+	d->pcie_addr = 0;
+	ret = fw_submit_batch_nowait(fw, batch);
 	kfree(batch);
 	return ret;
 }
@@ -1272,6 +1316,9 @@ static int fw_handle_io_cmd(struct nvme_fw_dev *fw, const struct nvme_fw_cmd *cm
 		}
 		if (fw_enable_io_dma_data) {
 			ret = fw_ensure_zero_page(fw);
+			if (!ret && fw_auto_io_cpl)
+				return fw_submit_auto_io_dma(fw, cmd,
+					fw_mgmt_dev_addr + NVME_FW_STAGE_SIZE, len, true);
 			if (!ret)
 				ret = fw_dma_card_to_prp_from(fw,
 					fw_mgmt_dev_addr + NVME_FW_STAGE_SIZE,
@@ -1431,9 +1478,9 @@ static int fw_firmware_thread(void *data)
 	u32 poll_us;
 
 	dev_info(&fw->pdev->dev,
-		 "firmware worker: started poll_us=%u mgmt_dev_addr=0x%llx pf0_msi=%d dma_data=%d io_dma_data=%d\n",
+		 "firmware worker: started poll_us=%u mgmt_dev_addr=0x%llx pf0_msi=%d dma_data=%d io_dma_data=%d auto_io_cpl=%d\n",
 		 fw_poll_us, fw_mgmt_dev_addr, fw_enable_pf0_msi,
-		 fw_enable_dma_data, fw_enable_io_dma_data);
+		 fw_enable_dma_data, fw_enable_io_dma_data, fw_auto_io_cpl);
 	while (!kthread_should_stop()) {
 		int work = fw_firmware_poll(fw);
 
