@@ -82,6 +82,7 @@
 #define AUTO_REG_LAST_CQE_DW2              (AUTO_REG_BASE + 0x54)
 #define AUTO_REG_CQ_IRQ_RETRY              (AUTO_REG_BASE + 0x58)
 #define AUTO_REG_SW_DOORBELL               (AUTO_REG_BASE + 0x5c)
+#define AUTO_REG_CQ_IRQ_RETRY_CYCLES       (AUTO_REG_BASE + 0x60)
 
 #define AUTO_MAGIC_VALUE                   0xA710F001U
 

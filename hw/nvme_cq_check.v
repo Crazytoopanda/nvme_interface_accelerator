@@ -52,8 +52,7 @@ http://www.hanyang.ac.kr/
 
 module nvme_cq_check # (
 	parameter	C_PCIE_DATA_WIDTH			= 512,
-	parameter	C_PCIE_ADDR_WIDTH			= 48, //modified
-	parameter	[15:0] P_CQ_IRQ_RETRY_CYCLES	= 16'h1000
+	parameter	C_PCIE_ADDR_WIDTH			= 48 //modified
 )
 (
 	input									pcie_user_clk,
@@ -64,6 +63,7 @@ module nvme_cq_check # (
 	input									cq_rst_n,
 	input									cq_valid,
 	input									io_cq_irq_en,
+	input	[31:0]							cq_irq_retry_cycles,
 	
 	input	[7:0]							cq_tail_ptr,
 	input	[7:0]							cq_head_ptr,
@@ -90,7 +90,7 @@ reg		[4:0]								next_state;
 
 reg		[7:0]								r_cq_tail_ptr;
 reg		[7:0]								r_cq_msi_irq_head_ptr;
-reg		[15:0]								r_irq_timer;
+reg		[31:0]								r_irq_timer;
 reg											r_cq_legacy_irq_req;
 reg											r_cq_msi_irq_req;
 reg											r_irq_armed;
@@ -150,7 +150,7 @@ begin
 		S_CQ_MSI_HEAD_SET: begin
 			if(cq_head_update == 1 || (cq_head_ptr == r_cq_tail_ptr))
 				next_state <= S_CQ_MSI_IRQ_TIMER;
-			else if(r_irq_timer == 0)
+			else if((r_irq_timer == 0) && (cq_irq_retry_cycles != 0))
 				next_state <= S_CQ_MSI_IRQ_REQ;
 			else
 				next_state <= S_CQ_MSI_HEAD_SET;
@@ -180,7 +180,7 @@ begin
 		end
 		S_CQ_MSI_IRQ_REQ: begin
 			if(cq_msi_irq_ack == 1'b1)
-				r_irq_timer <= P_CQ_IRQ_RETRY_CYCLES;
+				r_irq_timer <= cq_irq_retry_cycles;
 		end
 		S_CQ_MSI_HEAD_SET: begin
 			if(cq_head_update == 1'b1 || (cq_head_ptr == r_cq_tail_ptr))

@@ -72,6 +72,7 @@ module nvme_irq_handler # (
 	input	[8:0]							cq_rst_n,
 	input	[8:0]							cq_valid,
 	input	[8:0]							io_cq_irq_en,
+	input	[31:0]							cq_irq_retry_cycles,
 	input	[2:0]							io_cq1_iv,
 	input	[2:0]							io_cq2_iv,
 	input	[2:0]							io_cq3_iv,
@@ -395,6 +396,7 @@ nvme_cq_check_inst0
 	.cq_rst_n										(cq_rst_n[0]),
 	.cq_valid										(cq_valid[0]),
 	.io_cq_irq_en									(io_cq_irq_en[0]),
+	.cq_irq_retry_cycles						(cq_irq_retry_cycles),
 	
 	.cq_tail_ptr									(admin_cq_tail_ptr),
 	.cq_head_ptr									(admin_cq_head_ptr),
@@ -416,6 +418,7 @@ nvme_cq_check_inst1
 	.cq_rst_n										(cq_rst_n[1]),
 	.cq_valid										(cq_valid[1]),
 	.io_cq_irq_en									(io_cq_irq_en[1]),
+	.cq_irq_retry_cycles						(cq_irq_retry_cycles),
 	
 	.cq_tail_ptr									(io_cq1_tail_ptr),
 	.cq_head_ptr									(io_cq1_head_ptr),
@@ -437,6 +440,7 @@ nvme_cq_check_inst2
 	.cq_rst_n										(cq_rst_n[2]),
 	.cq_valid										(cq_valid[2]),
 	.io_cq_irq_en									(io_cq_irq_en[2]),
+	.cq_irq_retry_cycles						(cq_irq_retry_cycles),
 	
 	.cq_tail_ptr									(io_cq2_tail_ptr),
 	.cq_head_ptr									(io_cq2_head_ptr),
@@ -459,6 +463,7 @@ nvme_cq_check_inst3
 	.cq_rst_n										(cq_rst_n[3]),
 	.cq_valid										(cq_valid[3]),
 	.io_cq_irq_en									(io_cq_irq_en[3]),
+	.cq_irq_retry_cycles						(cq_irq_retry_cycles),
 	
 	.cq_tail_ptr									(io_cq3_tail_ptr),
 	.cq_head_ptr									(io_cq3_head_ptr),
@@ -481,6 +486,7 @@ nvme_cq_check_inst4
 	.cq_rst_n										(cq_rst_n[4]),
 	.cq_valid										(cq_valid[4]),
 	.io_cq_irq_en									(io_cq_irq_en[4]),
+	.cq_irq_retry_cycles						(cq_irq_retry_cycles),
 	
 	.cq_tail_ptr									(io_cq4_tail_ptr),
 	.cq_head_ptr									(io_cq4_head_ptr),
@@ -503,6 +509,7 @@ nvme_cq_check_inst5
 	.cq_rst_n										(cq_rst_n[5]),
 	.cq_valid										(cq_valid[5]),
 	.io_cq_irq_en									(io_cq_irq_en[5]),
+	.cq_irq_retry_cycles						(cq_irq_retry_cycles),
 	
 	.cq_tail_ptr									(io_cq5_tail_ptr),
 	.cq_head_ptr									(io_cq5_head_ptr),
@@ -525,6 +532,7 @@ nvme_cq_check_inst6
 	.cq_rst_n										(cq_rst_n[6]),
 	.cq_valid										(cq_valid[6]),
 	.io_cq_irq_en									(io_cq_irq_en[6]),
+	.cq_irq_retry_cycles						(cq_irq_retry_cycles),
 	
 	.cq_tail_ptr									(io_cq6_tail_ptr),
 	.cq_head_ptr									(io_cq6_head_ptr),
@@ -547,6 +555,7 @@ nvme_cq_check_inst7
 	.cq_rst_n										(cq_rst_n[7]),
 	.cq_valid										(cq_valid[7]),
 	.io_cq_irq_en									(io_cq_irq_en[7]),
+	.cq_irq_retry_cycles						(cq_irq_retry_cycles),
 	
 	.cq_tail_ptr									(io_cq7_tail_ptr),
 	.cq_head_ptr									(io_cq7_head_ptr),
@@ -569,6 +578,7 @@ nvme_cq_check_inst8
 	.cq_rst_n										(cq_rst_n[8]),
 	.cq_valid										(cq_valid[8]),
 	.io_cq_irq_en									(io_cq_irq_en[8]),
+	.cq_irq_retry_cycles						(cq_irq_retry_cycles),
 	
 	.cq_tail_ptr									(io_cq8_tail_ptr),
 	.cq_head_ptr									(io_cq8_head_ptr),

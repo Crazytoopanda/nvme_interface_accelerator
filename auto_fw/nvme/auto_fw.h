@@ -9,6 +9,7 @@ unsigned int auto_fw_status(void);
 unsigned int auto_fw_error(void);
 void auto_fw_clear_errors(unsigned int mask);
 void auto_fw_retry_cq_irq(unsigned int cqid);
+void auto_fw_set_cq_irq_retry_cycles(unsigned int cycles);
 int auto_fw_service(void);
 void auto_fw_run(void);
 

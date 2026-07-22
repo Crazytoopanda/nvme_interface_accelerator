@@ -217,6 +217,7 @@ module s_axi_reg # (
 	output	[C_M_AXI_ADDR_WIDTH-1:0]			auto_ddr_base,
 	output	[C_M_AXI_ADDR_WIDTH-1:0]			auto_ddr_limit,
 	output	[8:0]								auto_io_enable_mask,
+	output	[31:0]							auto_cq_irq_retry_cycles,
 	output	[31:0]							auto_error_clear,
 	input	[31:0]							auto_status,
 	input	[31:0]							auto_error,
@@ -491,6 +492,7 @@ reg		[C_M_AXI_ADDR_WIDTH-1:0]			r_auto_ddr_limit;
 reg		[8:0]								r_auto_io_enable_mask;
 reg		[31:0]								r_auto_pf0_msi_ctrl;
 reg		[31:0]								r_auto_cq_mode;
+reg		[31:0]								r_auto_cq_irq_retry_cycles;
 reg		[31:0]								r_auto_error_clear;
 reg										r_auto_reset_pulse;
 reg		[31:0]								r_auto_cq_irq_retry_count;
@@ -645,6 +647,7 @@ assign auto_cq_mode = r_auto_cq_mode;
 assign auto_ddr_base = r_auto_ddr_base;
 assign auto_ddr_limit = r_auto_ddr_limit;
 assign auto_io_enable_mask = r_auto_io_enable_mask;
+assign auto_cq_irq_retry_cycles = r_auto_cq_irq_retry_cycles;
 assign auto_error_clear = r_auto_error_clear;
 assign w_auto_cq_irq_retry_cqid = w_reg_wdata[7:4];
 assign w_auto_cq_irq_retry_wr = w_auto_reg_en & (w_reg_wr_addr[7:2] == 6'h16) &
@@ -1632,6 +1635,7 @@ begin
 		r_auto_io_enable_mask <= 9'h1fe;
 		r_auto_pf0_msi_ctrl <= 0;
 		r_auto_cq_mode <= 0;
+		r_auto_cq_irq_retry_cycles <= 32'h0000_1000;
 		r_auto_error_clear <= 0;
 		r_auto_reset_pulse <= 0;
 	end
@@ -1658,6 +1662,7 @@ begin
 				6'h08: r_auto_io_enable_mask <= w_reg_wdata[8:0];
 				6'h09: r_auto_pf0_msi_ctrl <= w_reg_wdata;
 				6'h0A: r_auto_cq_mode <= w_reg_wdata;
+				6'h18: r_auto_cq_irq_retry_cycles <= w_reg_wdata;
 			endcase
 		end
 	end
@@ -1896,6 +1901,7 @@ begin
 		6'h14: r_auto_reg_rdata = auto_last_error_info;
 		6'h15: r_auto_reg_rdata = cq_dbg_last_dw2;
 		6'h16: r_auto_reg_rdata = {r_auto_cq_irq_retry_count[15:0], 12'b0, r_auto_cq_irq_retry_last_cqid};
+		6'h18: r_auto_reg_rdata = r_auto_cq_irq_retry_cycles;
 	endcase
 end
 

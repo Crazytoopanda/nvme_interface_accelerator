@@ -44,6 +44,7 @@ module tb_s_axi_reg_reset;
     wire [8:0] cq_valid;
     wire [8:0] io_cq_irq_en;
     wire [3:0] reset_count;
+    wire [31:0] auto_cq_irq_retry_cycles;
 
     wire [7:0] io_sq1_size, io_sq2_size, io_sq3_size, io_sq4_size;
     wire [7:0] io_sq5_size, io_sq6_size, io_sq7_size, io_sq8_size;
@@ -166,6 +167,7 @@ module tb_s_axi_reg_reset;
         .auto_ddr_base(),
         .auto_ddr_limit(),
         .auto_io_enable_mask(),
+        .auto_cq_irq_retry_cycles(auto_cq_irq_retry_cycles),
         .auto_error_clear(),
         .auto_status(32'd0),
         .auto_error(32'd0),
@@ -222,6 +224,9 @@ module tb_s_axi_reg_reset;
         repeat (5) @(posedge clk);
         rst_n = 1'b1;
         repeat (5) @(posedge clk);
+        expect_equal("CQ IRQ retry reset default", auto_cq_irq_retry_cycles, 32'h0000_1000);
+        axi_write(32'h0000_0460, 32'h0003_d090);
+        expect_equal("CQ IRQ retry firmware value", auto_cq_irq_retry_cycles, 32'h0003_d090);
 
         axi_write(32'h0000_021c, 32'h0000_0007);
         axi_write(32'h0000_0224, 32'h0001_0000);

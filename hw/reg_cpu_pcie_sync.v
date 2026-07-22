@@ -111,6 +111,7 @@ module reg_cpu_pcie_sync # (
 	input	[2:0]							io_cq6_iv,
 	input	[2:0]							io_cq7_iv,
 	input	[2:0]							io_cq8_iv,
+	input	[31:0]							auto_cq_irq_retry_cycles,
 
 	output									pcie_link_up_sync,
 	output	[5:0]							pl_ltssm_state_sync,
@@ -199,6 +200,7 @@ module reg_cpu_pcie_sync # (
 	output	[2:0]							io_cq6_iv_sync,
 	output	[2:0]							io_cq7_iv_sync,
 	output	[2:0]							io_cq8_iv_sync,
+	output	[31:0]							auto_cq_irq_retry_cycles_sync,
 	
     input [3:0]                           reset_count, //1
 	
@@ -294,6 +296,8 @@ module reg_cpu_pcie_sync # (
 (* KEEP = "TRUE", SHIFT_EXTRACT = "NO" *)	reg		[2:0]							r_io_cq6_iv;
 (* KEEP = "TRUE", SHIFT_EXTRACT = "NO" *)	reg		[2:0]							r_io_cq7_iv;
 (* KEEP = "TRUE", SHIFT_EXTRACT = "NO" *)	reg		[2:0]							r_io_cq8_iv;
+(* KEEP = "TRUE", SHIFT_EXTRACT = "NO" *)	reg		[31:0]							r_auto_cq_irq_retry_cycles;
+(* KEEP = "TRUE", SHIFT_EXTRACT = "NO" *)	reg		[31:0]							r_auto_cq_irq_retry_cycles_d1;
 
 (* KEEP = "TRUE", SHIFT_EXTRACT = "NO" *)	reg		[3:0]							r_reset_count;//1
 (* KEEP = "TRUE", SHIFT_EXTRACT = "NO" *)	reg		[3:0]							r_reset_count_dl;//1
@@ -372,6 +376,7 @@ assign io_cq5_iv_sync = r_io_cq5_iv;
 assign io_cq6_iv_sync = r_io_cq6_iv;
 assign io_cq7_iv_sync = r_io_cq7_iv;
 assign io_cq8_iv_sync = r_io_cq8_iv;
+assign auto_cq_irq_retry_cycles_sync = r_auto_cq_irq_retry_cycles_d1;
 
 always @ (posedge cpu_bus_clk)
 begin
@@ -470,6 +475,8 @@ begin
 	r_io_cq6_iv <= io_cq6_iv;
 	r_io_cq7_iv <= io_cq7_iv;
 	r_io_cq8_iv <= io_cq8_iv;
+	r_auto_cq_irq_retry_cycles <= auto_cq_irq_retry_cycles;
+	r_auto_cq_irq_retry_cycles_d1 <= r_auto_cq_irq_retry_cycles;
 	
 	r_reset_count <= reset_count; //1
 	r_reset_count_dl <= r_reset_count;//1

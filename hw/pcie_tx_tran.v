@@ -50,6 +50,8 @@ http://www.hanyang.ac.kr/
 
 `timescale 1ns / 1ps
 
+`include "def_pcie.vh"
+
 
      module pcie_tx_tran # (
 	parameter	C_PCIE_DATA_WIDTH			= 512,
@@ -154,6 +156,8 @@ localparam	S_TX_MWR_DATA_LAST				= 10'b1000000000;
        reg		[C_PCIE_DATA_WIDTH-1:0]				r_tx_mwr_data;
       reg		[C_PCIE_DATA_WIDTH-1:0]				r_tx_mwr_data_d1;
       reg		[C_PCIE_DATA_WIDTH-1:0]				r_tx_mwr_data_d2;
+	wire									w_tx_next_mwr_accept;
+	wire	[C_PCIE_DATA_WIDTH-1:0]				w_tx_next_mwr_data;
     
        reg											r_tx_mwr0_rd_en;
        reg											r_tx_mwr0_data_last;
@@ -176,10 +180,14 @@ assign s_axis_rq_tvalid = r_s_axis_rq_tx_tvalid;
 
 assign tx_arb_rdy = r_tx_arb_rdy;
 
-assign tx_mwr0_rd_en = r_tx_mwr0_rd_en;
+assign tx_mwr0_rd_en = r_tx_mwr0_rd_en | (w_tx_next_mwr_accept & tx_arb_gnt[4]);
 assign tx_mwr0_data_last = r_tx_mwr0_data_last;
-assign tx_mwr1_rd_en = r_tx_mwr1_rd_en;
+assign tx_mwr1_rd_en = r_tx_mwr1_rd_en | (w_tx_next_mwr_accept & tx_arb_gnt[5]);
 assign tx_mwr1_data_last = r_tx_mwr1_data_last;
+
+// Consume the first synchronous-FIFO line with the grant so chained MWr TLPs have no prefetch bubble.
+assign w_tx_next_mwr_accept = r_tx_arb_rdy & tx_arb_valid & (tx_arb_type == 3'b100);
+assign w_tx_next_mwr_data = tx_arb_gnt[4] ? tx_mwr0_rd_data : tx_mwr1_rd_data;
 
 always @ (posedge pcie_user_clk or negedge pcie_user_rst_n)
 begin
@@ -200,7 +208,8 @@ begin
 				case(tx_arb_type) // synthesis parallel_case full_case
 					3'b001: next_state <= S_TX_CPLD_HEAD;
 					3'b010: next_state <= S_TX_MRD_HEAD;
-					3'b100: next_state <= S_TX_MWR_HEAD;
+					3'b100: next_state <= (tx_pcie_len <= 12) ?
+						S_TX_MWR_HEAD_DATA_LAST : S_TX_MWR_HEAD_DATA;
 				endcase
 			end
 			else
@@ -212,7 +221,8 @@ begin
 					case(tx_arb_type) // synthesis parallel_case full_case
 						3'b001: next_state <= S_TX_CPLD_HEAD;
 						3'b010: next_state <= S_TX_MRD_HEAD;
-						3'b100: next_state <= S_TX_MWR_HEAD;
+						3'b100: next_state <= (tx_pcie_len <= 12) ?
+						S_TX_MWR_HEAD_DATA_LAST : S_TX_MWR_HEAD_DATA;
 					endcase
 				end
 				else
@@ -227,7 +237,8 @@ begin
 					case(tx_arb_type) // synthesis parallel_case full_case
 						3'b001: next_state <= S_TX_CPLD_HEAD;
 						3'b010: next_state <= S_TX_MRD_HEAD;
-						3'b100: next_state <= S_TX_MWR_HEAD;
+						3'b100: next_state <= (tx_pcie_len <= 12) ?
+						S_TX_MWR_HEAD_DATA_LAST : S_TX_MWR_HEAD_DATA;
 					endcase
 				end
 				else
@@ -268,7 +279,8 @@ begin
 					case(tx_arb_type) // synthesis parallel_case full_case
 						3'b001: next_state <= S_TX_CPLD_HEAD;
 						3'b010: next_state <= S_TX_MRD_HEAD;
-						3'b100: next_state <= S_TX_MWR_HEAD;
+						3'b100: next_state <= (tx_pcie_len <= 12) ?
+						S_TX_MWR_HEAD_DATA_LAST : S_TX_MWR_HEAD_DATA;
 					endcase
 				end
 				else
@@ -303,7 +315,8 @@ begin
 					case(tx_arb_type) // synthesis parallel_case full_case
 						3'b001: next_state <= S_TX_CPLD_HEAD;
 						3'b010: next_state <= S_TX_MRD_HEAD;
-						3'b100: next_state <= S_TX_MWR_HEAD;
+						3'b100: next_state <= (tx_pcie_len <= 12) ?
+						S_TX_MWR_HEAD_DATA_LAST : S_TX_MWR_HEAD_DATA;
 					endcase
 				end
 				else
@@ -342,7 +355,11 @@ end
 
 always @ (posedge pcie_user_clk)
 begin
-	case(cur_state)
+	if(w_tx_next_mwr_accept == 1'b1) begin
+		r_tx_pcie_data_cnt <= tx_pcie_len;
+		r_tx_mwr_data <= w_tx_next_mwr_data;
+	end
+	else case(cur_state)
 		S_TX_IDLE: begin
 
 		end

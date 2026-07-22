@@ -1,5 +1,5 @@
 # auto_fw
-
+| `0x060` | `0xA0000460` |
 Minimal MicroBlaze firmware for the autonomous NVMe datapath.
 
 This tree is intentionally separate from `fw/`.  The target split is:
@@ -101,6 +101,7 @@ inside BAR2, for example BAR2 `+ 0x400` for `AUTO_REG_MAGIC`.
 | `0x054` | `0xA0000454` | `AUTO_REG_LAST_CQE_DW2` | RO | Last CQE DW2 `{sqid, sqhd}` captured when the CQ writer issues a memory write. |
 | `0x058` | `0xA0000458` | `AUTO_REG_CQ_IRQ_RETRY` | W1P/RO | Write bit 0 as `1` with bits `[7:4]` holding CQID `0`-`8` to retry PF0 MSI for an already-written CQE. Read returns `{retry_count[15:0], 12'b0, last_cqid}`. |
 | `0x05c` | `0xA000045c` | `AUTO_REG_SW_DOORBELL` | Reserved | Declared for future firmware handoff, not decoded by current RTL. |
+| `0x060` | `0xA0000460` | `AUTO_REG_CQ_IRQ_RETRY_CYCLES` | RW | Per-CQ automatic MSI retry timeout in PCIe user-clock cycles. Reset and firmware default are `4096`; write `0` to disable automatic retries without suppressing the first MSI. |
 
 CQ IRQ retry watchdog:
 
@@ -111,9 +112,10 @@ CQ IRQ retry watchdog:
 - This is a lost-MSI fallback. The card cannot know the Linux timeout directly; exact detection requires exposing host CQ head doorbell updates/counters to the automation register window.
 - RTL also maintains a per-CQ watchdog in `nvme_cq_check`. After an MSI is sent,
   that CQ waits for its CQ-head doorbell update. If it does not arrive within
-  `P_CQ_IRQ_RETRY_CYCLES`, the same CQ requests its configured MSI vector again.
-  The default is 4096 PCIe user-clock cycles (about 16 us at 250 MHz);
-  this is a retry timeout, not a delay inserted between every CQE and its first MSI.
+  `AUTO_REG_CQ_IRQ_RETRY_CYCLES`, the same CQ requests its configured MSI vector again.
+  The reset and firmware default is 4096 PCIe user-clock cycles (about 16 us at 250 MHz).
+  Firmware can call `auto_fw_set_cq_irq_retry_cycles()` to tune it at runtime; zero
+  disables periodic retries. This timeout does not delay the first MSI.
 
 
 `AUTO_REG_ERROR` bits:

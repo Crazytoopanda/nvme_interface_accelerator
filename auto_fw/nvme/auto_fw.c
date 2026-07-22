@@ -63,6 +63,10 @@
 #define AUTO_FW_CQ_IRQ_RETRY_ENABLE         0U
 #endif
 
+#ifndef AUTO_FW_CQ_IRQ_RETRY_CYCLES
+#define AUTO_FW_CQ_IRQ_RETRY_CYCLES         4096U
+#endif
+
 #ifndef AUTO_FW_CQ_IRQ_RETRY_DELAY_SERVICE
 #define AUTO_FW_CQ_IRQ_RETRY_DELAY_SERVICE  4096U
 #endif
@@ -988,6 +992,7 @@ static void auto_hw_configure(void)
 	auto_reg_write(AUTO_REG_IO_ENABLE_MASK, 0x000001feU);
 	auto_reg_write(AUTO_REG_PF0_MSI_CTRL, 0x00000101U);
 	auto_reg_write(AUTO_REG_CQ_MODE, AUTO_CQ_MODE_HW);
+	auto_reg_write(AUTO_REG_CQ_IRQ_RETRY_CYCLES, AUTO_FW_CQ_IRQ_RETRY_CYCLES);
 }
 
 static void auto_fw_clear_for_rearm(void)
@@ -1056,6 +1061,11 @@ void auto_fw_clear_errors(unsigned int mask)
 void auto_fw_retry_cq_irq(unsigned int cqid)
 {
 	auto_reg_write(AUTO_REG_CQ_IRQ_RETRY, ((cqid & 0xfU) << 4) | 1U);
+}
+
+void auto_fw_set_cq_irq_retry_cycles(unsigned int cycles)
+{
+	auto_reg_write(AUTO_REG_CQ_IRQ_RETRY_CYCLES, cycles);
 }
 
 static uint32_t auto_fw_cqid_from_sqid(uint32_t sqid)

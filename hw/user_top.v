@@ -571,6 +571,7 @@ wire	[2:0]								w_io_cq5_iv_sync;
 wire	[2:0]								w_io_cq6_iv_sync;
 wire	[2:0]								w_io_cq7_iv_sync;
 wire	[2:0]								w_io_cq8_iv_sync;
+wire	[31:0]								w_auto_cq_irq_retry_cycles_sync;
 
 wire	[(P_SLOT_TAG_WIDTH+2)+1:0]			w_hcmd_table_rd_addr; //slot_modified
 wire	[(P_SLOT_TAG_WIDTH+2)+1:0]			w_s0_hcmd_table_rd_addr; //slot_modified
@@ -606,6 +607,7 @@ wire	[31:0]								w_auto_cq_mode;
 wire	[C_M0_AXI_ADDR_WIDTH-1:0]			w_auto_ddr_base;
 wire	[C_M0_AXI_ADDR_WIDTH-1:0]			w_auto_ddr_limit;
 wire	[8:0]								w_auto_io_enable_mask;
+wire	[31:0]								w_auto_cq_irq_retry_cycles;
 wire	[31:0]								w_auto_error_clear;
 wire	[31:0]								w_auto_status;
 wire	[31:0]								w_auto_error;
@@ -1209,6 +1211,7 @@ s_axi_top_inst0 (
 	.auto_ddr_base						(w_auto_ddr_base),
 	.auto_ddr_limit						(w_auto_ddr_limit),
 	.auto_io_enable_mask				(w_auto_io_enable_mask),
+	.auto_cq_irq_retry_cycles		(w_auto_cq_irq_retry_cycles),
 	.auto_error_clear					(w_auto_error_clear),
 	.auto_status						(w_auto_status),
 	.auto_error							(w_auto_error),
@@ -1285,6 +1288,7 @@ reg_cpu_pcie_sync_isnt0
 	.io_cq6_iv							(w_io_cq6_iv),
 	.io_cq7_iv							(w_io_cq7_iv),
 	.io_cq8_iv							(w_io_cq8_iv),
+	.auto_cq_irq_retry_cycles			(w_auto_cq_irq_retry_cycles),
 
 	.pcie_link_up_sync					(w_pcie_link_up_sync),
 	.pl_ltssm_state_sync				(w_pl_ltssm_state_sync),
@@ -1373,6 +1377,7 @@ reg_cpu_pcie_sync_isnt0
 	.io_cq6_iv_sync						(w_io_cq6_iv_sync),
 	.io_cq7_iv_sync						(w_io_cq7_iv_sync),
 	.io_cq8_iv_sync						(w_io_cq8_iv_sync),
+	.auto_cq_irq_retry_cycles_sync	(w_auto_cq_irq_retry_cycles_sync),
 	
 	.reset_count                        (w_reset_count),	
     .reset_count_sync                   (reset_count)
@@ -1480,6 +1485,7 @@ nvme_pcie_inst0(
 	.io_cq6_iv								(w_io_cq6_iv_sync),
 	.io_cq7_iv								(w_io_cq7_iv_sync),
 	.io_cq8_iv								(w_io_cq8_iv_sync),
+	.cq_irq_retry_cycles				(w_auto_cq_irq_retry_cycles_sync),
 
 	.hcmd_sq_rd_en							(w_hcmd_sq_rd_en_mux),
 	.hcmd_sq_rd_data						(w_hcmd_sq_rd_data),
