@@ -53,7 +53,7 @@ http://www.hanyang.ac.kr/
   module pcie_hcmd_cq_fifo # (
 	parameter 	P_SLOT_TAG_WIDTH			=  10, //slot_modified
 	parameter	P_FIFO_DATA_WIDTH			= P_SLOT_TAG_WIDTH+28,
-	parameter	P_FIFO_DEPTH_WIDTH			= 5
+	parameter	P_FIFO_DEPTH_WIDTH			= 12
 )
 (
   	input									clk,
@@ -113,6 +113,8 @@ localparam	S_WRITE1						= 3'b100;
       (* KEEP = "TRUE", SHIFT_EXTRACT = "NO" *)	reg											r_wr1_rdy_n_sync_d1;
       (* KEEP = "TRUE", SHIFT_EXTRACT = "NO" *)	reg											r_wr1_rdy_n_sync_d2;
       reg											r_wr1_rdy_n;
+      reg											r_full_wr1_d1;
+      reg											r_full_wr1_d2;
       reg		[P_FIFO_DATA_WIDTH-1:0]				r_wr1_data0_sync;
       reg		[P_FIFO_DATA_WIDTH-1:0]				r_wr1_data1_sync;
     
@@ -125,8 +127,20 @@ localparam	S_WRITE1						= 3'b100;
 
 
 
-assign wr0_rdy_n = r_wr0_req;
-assign wr1_rdy_n = r_wr1_rdy_n;
+assign wr0_rdy_n = r_wr0_req | ~full_n;
+assign wr1_rdy_n = r_wr1_rdy_n | r_full_wr1_d2;
+
+always @(posedge wr1_clk or negedge wr1_rst_n)
+begin
+	if(wr1_rst_n == 0) begin
+		r_full_wr1_d1 <= 1'b0;
+		r_full_wr1_d2 <= 1'b0;
+	end
+	else begin
+		r_full_wr1_d1 <= ~full_n;
+		r_full_wr1_d2 <= r_full_wr1_d1;
+	end
+end
 
 always @(posedge wr1_clk)
 begin
@@ -312,55 +326,19 @@ assign w_front_addr = (rd_en == 1) ? r_front_addr_p1[P_FIFO_DEPTH_WIDTH-1:0]
 								: r_front_addr[P_FIFO_DEPTH_WIDTH-1:0];
 
 
-localparam LP_DEVICE = "7SERIES";
-localparam LP_BRAM_SIZE = "36Kb"; //slot_modified
-localparam LP_DOB_REG = 0;
-localparam LP_READ_WIDTH = P_FIFO_DATA_WIDTH;
-localparam LP_WRITE_WIDTH = P_FIFO_DATA_WIDTH;
-localparam LP_WRITE_MODE = "READ_FIRST";
-localparam LP_WE_WIDTH = 8; //slot_modified
-localparam LP_ADDR_TOTAL_WITDH = 9; //slot_modified
-localparam LP_ADDR_ZERO_PAD_WITDH = LP_ADDR_TOTAL_WITDH - P_FIFO_DEPTH_WIDTH;
+localparam P_FIFO_DEPTH = (1 << P_FIFO_DEPTH_WIDTH);
 
+(* ram_style = "block" *) reg [P_FIFO_DATA_WIDTH-1:0] r_mem [0:P_FIFO_DEPTH-1];
+reg [P_FIFO_DATA_WIDTH-1:0] r_rd_data;
 
-generate
-  	wire	[LP_ADDR_TOTAL_WITDH-1:0]			rdaddr;
-  	wire	[LP_ADDR_TOTAL_WITDH-1:0]			wraddr;
-  	wire	[LP_ADDR_ZERO_PAD_WITDH-1:0]		zero_padding = 0;
+assign rd_data = r_rd_data;
 
-	if(LP_ADDR_ZERO_PAD_WITDH == 0) begin : calc_addr
-		assign rdaddr = w_front_addr[P_FIFO_DEPTH_WIDTH-1:0];
-		assign wraddr = r_rear_addr[P_FIFO_DEPTH_WIDTH-1:0];
-	end
-	else begin
-		assign rdaddr = {zero_padding[LP_ADDR_ZERO_PAD_WITDH-1:0], w_front_addr[P_FIFO_DEPTH_WIDTH-1:0]};
-		assign wraddr = {zero_padding[LP_ADDR_ZERO_PAD_WITDH-1:0], r_rear_addr[P_FIFO_DEPTH_WIDTH-1:0]};
-	end
-endgenerate
-
-
-BRAM_SDP_MACRO #(
-	.DEVICE									(LP_DEVICE),
-	.BRAM_SIZE								(LP_BRAM_SIZE),
-	.DO_REG									(LP_DOB_REG),
-	.READ_WIDTH								(LP_READ_WIDTH),
-	.WRITE_WIDTH							(LP_WRITE_WIDTH),
-	.WRITE_MODE								(LP_WRITE_MODE)
-)
-ramb36sdp_0( //slot_modified
-	.DO										(rd_data[LP_READ_WIDTH-1:0]),
-	.DI										(r_wr_data[LP_WRITE_WIDTH-1:0]),
-	.RDADDR									(rdaddr),
-	.RDCLK									(clk),
-	.RDEN									(1'b1),
-	.REGCE									(1'b1),
-	.RST									(1'b0),
-	.WE										({LP_WE_WIDTH{1'b1}}),
-	.WRADDR									(wraddr),
-	.WRCLK									(clk),
-	.WREN									(r_wr_en)
-);
-
+always @(posedge clk)
+begin
+	if(r_wr_en == 1'b1)
+		r_mem[r_rear_addr[P_FIFO_DEPTH_WIDTH-1:0]] <= r_wr_data;
+	r_rd_data <= r_mem[w_front_addr];
+end
 
 
 endmodule

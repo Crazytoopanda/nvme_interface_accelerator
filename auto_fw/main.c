@@ -8,6 +8,15 @@
 #define xil_printf(...) ((void)0)
 #endif
 
+#ifndef AUTO_FW_DEBUG
+#define AUTO_FW_DEBUG 0U
+#endif
+
+#define AUTO_FW_DEBUG_PRINT(...) do { \
+	if(AUTO_FW_DEBUG != 0U) \
+		xil_printf(__VA_ARGS__); \
+} while(0)
+
 static void platform_init(void)
 {
 #ifdef __MICROBLAZE__
@@ -23,7 +32,7 @@ int main(void)
 	unsigned int magic;
 
 	platform_init();
-	xil_printf("auto_fw: start\r\n");
+	AUTO_FW_DEBUG_PRINT("auto_fw: start\r\n");
 
 	magic = auto_reg_read(AUTO_REG_MAGIC);
 	if(magic != AUTO_MAGIC_VALUE)

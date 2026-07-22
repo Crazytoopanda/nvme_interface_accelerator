@@ -52,7 +52,8 @@ http://www.hanyang.ac.kr/
 
 module nvme_cq_check # (
 	parameter	C_PCIE_DATA_WIDTH			= 512,
-	parameter	C_PCIE_ADDR_WIDTH			= 48 //modified
+	parameter	C_PCIE_ADDR_WIDTH			= 48, //modified
+	parameter	[15:0] P_CQ_IRQ_RETRY_CYCLES	= 16'h1000
 )
 (
 	input									pcie_user_clk,
@@ -149,6 +150,8 @@ begin
 		S_CQ_MSI_HEAD_SET: begin
 			if(cq_head_update == 1 || (cq_head_ptr == r_cq_tail_ptr))
 				next_state <= S_CQ_MSI_IRQ_TIMER;
+			else if(r_irq_timer == 0)
+				next_state <= S_CQ_MSI_IRQ_REQ;
 			else
 				next_state <= S_CQ_MSI_HEAD_SET;
 		end
@@ -176,10 +179,14 @@ begin
 			r_irq_timer <= r_irq_timer - 1;
 		end
 		S_CQ_MSI_IRQ_REQ: begin
-
+			if(cq_msi_irq_ack == 1'b1)
+				r_irq_timer <= P_CQ_IRQ_RETRY_CYCLES;
 		end
 		S_CQ_MSI_HEAD_SET: begin
-			r_irq_timer <= LP_CQ_IRQ_DELAY_TIME;
+			if(cq_head_update == 1'b1 || (cq_head_ptr == r_cq_tail_ptr))
+				r_irq_timer <= LP_CQ_IRQ_DELAY_TIME;
+			else if(r_irq_timer != 0)
+				r_irq_timer <= r_irq_timer - 1'b1;
 		end
 		S_CQ_MSI_IRQ_TIMER: begin
 			r_irq_timer <= r_irq_timer - 1;
@@ -213,7 +220,10 @@ begin
 					r_cq_msi_irq_head_ptr <= r_cq_tail_ptr;
 			end
 			S_CQ_MSI_HEAD_SET: begin
-
+				if(cq_head_update == 1'b1)
+					r_cq_msi_irq_head_ptr <= cq_head_ptr;
+				else if(cq_head_ptr == r_cq_tail_ptr)
+					r_cq_msi_irq_head_ptr <= r_cq_tail_ptr;
 			end
 			S_CQ_MSI_IRQ_TIMER: begin
 

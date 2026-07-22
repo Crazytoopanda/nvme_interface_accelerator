@@ -34,13 +34,22 @@
 #define AUTO_FW_USE_S1_AXI_CMD_WINDOW       1U
 #endif
 
+#ifndef AUTO_FW_DEBUG
+#define AUTO_FW_DEBUG                       0U
+#endif
+
 #ifndef AUTO_FW_TRACE_ADMIN
-#define AUTO_FW_TRACE_ADMIN                 1U
+#define AUTO_FW_TRACE_ADMIN                 AUTO_FW_DEBUG
 #endif
 
 #ifndef AUTO_FW_TRACE_AUTO
-#define AUTO_FW_TRACE_AUTO                  1U
+#define AUTO_FW_TRACE_AUTO                  AUTO_FW_DEBUG
 #endif
+
+#define AUTO_FW_DEBUG_PRINT(...) do { \
+	if(AUTO_FW_DEBUG != 0U) \
+		xil_printf(__VA_ARGS__); \
+} while(0)
 
 #ifndef AUTO_FW_TRACE_AUTO_EARLY_CMDS
 #define AUTO_FW_TRACE_AUTO_EARLY_CMDS       32U
@@ -51,7 +60,7 @@
 #endif
 
 #ifndef AUTO_FW_CQ_IRQ_RETRY_ENABLE
-#define AUTO_FW_CQ_IRQ_RETRY_ENABLE         1U
+#define AUTO_FW_CQ_IRQ_RETRY_ENABLE         0U
 #endif
 
 #ifndef AUTO_FW_CQ_IRQ_RETRY_DELAY_SERVICE
@@ -1122,7 +1131,7 @@ static void auto_fw_enter_running(void)
 	auto_fw_set_csts_rdy(1U);
 	g_auto_fw.task = AUTO_FW_TASK_RUNNING;
 	auto_fw_enable_io();
-	xil_printf("auto_fw: NVMe ready\r\n");
+	AUTO_FW_DEBUG_PRINT("auto_fw: NVMe ready\r\n");
 }
 
 static void auto_fw_enter_shutdown(void)
@@ -1133,7 +1142,7 @@ static void auto_fw_enter_shutdown(void)
 	auto_fw_set_admin_queue(0U, 0U, 0U);
 	auto_fw_set_csts_shst(2U);
 	g_auto_fw.task = AUTO_FW_TASK_WAIT_RESET;
-	xil_printf("auto_fw: NVMe shutdown\r\n");
+	AUTO_FW_DEBUG_PRINT("auto_fw: NVMe shutdown\r\n");
 }
 
 static void auto_fw_poll_lifecycle(void)
@@ -1147,7 +1156,7 @@ static void auto_fw_poll_lifecycle(void)
 
 	if(g_auto_fw.last_status_valid == 0U ||
 	   g_auto_fw.last_cc_en != cc_en || g_auto_fw.last_cc_shn != cc_shn) {
-		xil_printf("auto_fw: NVME_STATUS=0x%08x CC.EN=%u CC.SHN=%u CSTS.RDY=%u CSTS.SHST=%u\r\n",
+		AUTO_FW_DEBUG_PRINT("auto_fw: NVME_STATUS=0x%08x CC.EN=%u CC.SHN=%u CSTS.RDY=%u CSTS.SHST=%u\r\n",
 			   status, cc_en, cc_shn, csts_rdy, csts_shst);
 		g_auto_fw.last_status_valid = 1U;
 		g_auto_fw.last_cc_en = cc_en;

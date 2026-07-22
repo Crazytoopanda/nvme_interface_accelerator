@@ -54,6 +54,14 @@ Current `auto_fw` behavior:
 - Enables `AUTO_REG_CTRL.EN` automatically when `CSTS.RDY` is asserted. The RTL
   auto engine now only pops enabled IO QIDs, so later admin commands remain
   routed to MicroBlaze.
+- Runtime tracing is disabled by default. Build with `-DAUTO_FW_DEBUG=1` to
+  enable MicroBlaze startup, lifecycle, admin-command, and automation-counter
+  messages. Automation fault messages remain enabled in normal builds.
+- Completed commands enter the ordered `pcie_hcmd_cq_fifo` before the PCIe CQ
+  memory-write engine. The FIFO holds 2048 CQEs (`256 entries x 8 IO queues`),
+  uses inferred block RAM, and backpressures both DMA and MicroBlaze completion
+  producers when full. A CQ tail advances only after the corresponding CQE
+  memory write is accepted by the PCIe request interface.
 
 Register layout:
 
@@ -96,9 +104,16 @@ inside BAR2, for example BAR2 `+ 0x400` for `AUTO_REG_MAGIC`.
 
 CQ IRQ retry watchdog:
 
-- `auto_fw_service()` tracks the last CQE write count and last CQE DW2/DW3.
+- The legacy MicroBlaze global-last-CQE watchdog is disabled by default because
+  traffic on another CQ can continually rearm it. Define
+  `AUTO_FW_CQ_IRQ_RETRY_ENABLE=1` only for diagnostic fallback.
 - If the last CQE stays unchanged for `AUTO_FW_CQ_IRQ_RETRY_DELAY_SERVICE` service passes, firmware writes `AUTO_REG_CQ_IRQ_RETRY` for the decoded CQID.
 - This is a lost-MSI fallback. The card cannot know the Linux timeout directly; exact detection requires exposing host CQ head doorbell updates/counters to the automation register window.
+- RTL also maintains a per-CQ watchdog in `nvme_cq_check`. After an MSI is sent,
+  that CQ waits for its CQ-head doorbell update. If it does not arrive within
+  `P_CQ_IRQ_RETRY_CYCLES`, the same CQ requests its configured MSI vector again.
+  The default is 4096 PCIe user-clock cycles (about 16 us at 250 MHz);
+  this is a retry timeout, not a delay inserted between every CQE and its first MSI.
 
 
 `AUTO_REG_ERROR` bits:
