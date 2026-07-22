@@ -106,6 +106,10 @@ module pcie_hcmd # (
 	output	[C_PCIE_DATA_WIDTH-1:0]			tx_cq_mwr_rd_data,
 	input									tx_cq_mwr_data_last,
 
+	output	[31:0]								cq_dbg_write_count,
+	output	[31:0]								cq_dbg_last_dw2,
+	output	[31:0]								cq_dbg_last_dw3,
+
 	input	[(P_SLOT_TAG_WIDTH+1)-1:0]		hcmd_prp_rd_addr, //slot_modified
 	output	[53:0]							hcmd_prp_rd_data, //modified
 
@@ -484,7 +488,11 @@ pcie_hcmd_cq_inst0(
 	.hcmd_cq_wr1_en							(hcmd_cq_wr1_en),
 	.hcmd_cq_wr1_data0						(hcmd_cq_wr1_data0),
 	.hcmd_cq_wr1_data1						(hcmd_cq_wr1_data1),
-	.hcmd_cq_wr1_rdy_n						(hcmd_cq_wr1_rdy_n)
+	.hcmd_cq_wr1_rdy_n						(hcmd_cq_wr1_rdy_n),
+
+	.cq_dbg_write_count						(cq_dbg_write_count),
+	.cq_dbg_last_dw2						(cq_dbg_last_dw2),
+	.cq_dbg_last_dw3						(cq_dbg_last_dw3)
 );
 
 endmodule

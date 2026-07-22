@@ -1,0 +1,13 @@
+#ifndef MEMORY_MAP_H_
+#define MEMORY_MAP_H_
+
+#include "kernel_config.h"
+
+#define DRAM_START_ADDR             0x5000000000ULL
+#define NVME_MANAGEMENT_START_ADDR  AUTO_FW_MGMT_BASE
+#define NVME_MANAGEMENT_END_ADDR    (AUTO_FW_MGMT_BASE + AUTO_FW_MGMT_SIZE - 1ULL)
+#define DATA_BUFFER_BASE_ADDR       AUTO_FW_DDR_BASE
+#define AUTO_FW_DDR_LIMIT           (AUTO_FW_DDR_BASE + AUTO_FW_DDR_SIZE - 1ULL)
+#define DRAM_END_ADDR               0x5FFFFFFFFFULL
+
+#endif

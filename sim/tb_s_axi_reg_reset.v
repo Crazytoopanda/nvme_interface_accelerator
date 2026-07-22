@@ -135,6 +135,17 @@ module tb_s_axi_reg_reset;
         .dma_cmd_wr_data0(dma_cmd_wr_data0),
         .dma_cmd_wr_data1(dma_cmd_wr_data1),
         .dma_cmd_wr_rdy_n(1'b0),
+        .bar2_reg_req(1'b0),
+        .bar2_reg_wr(1'b0),
+        .bar2_reg_addr(18'd0),
+        .bar2_reg_wdata(32'd0),
+        .bar2_reg_be(4'h0),
+        .bar2_reg_ack(),
+        .bar2_reg_rdata(),
+        .bar2_msi_req_toggle(),
+        .bar2_msi_vector(),
+        .bar2_pf0_msi_req_toggle(),
+        .bar2_pf0_msi_vector(),
         .dma_rx_direct_done_cnt(8'd0),
         .dma_tx_direct_done_cnt(8'd0),
         .dma_rx_done_cnt(8'd0),
@@ -145,6 +156,25 @@ module tb_s_axi_reg_reset;
         .cfg_interrupt_mmenable(3'd0),
         .cfg_interrupt_msienable(1'b0),
         .cfg_interrupt_msixenable(1'b0),
+        .auto_enable(),
+        .auto_reset(),
+        .auto_io_read_enable(),
+        .auto_io_write_enable(),
+        .auto_cq_enable(),
+        .auto_msi_enable(),
+        .auto_cq_mode(),
+        .auto_ddr_base(),
+        .auto_ddr_limit(),
+        .auto_io_enable_mask(),
+        .auto_error_clear(),
+        .auto_status(32'd0),
+        .auto_error(32'd0),
+        .auto_cmd_count(32'd0),
+        .auto_dma_submit_count(32'd0),
+        .auto_unsupported_count(32'd0),
+        .auto_last_qid_slot(32'd0),
+        .auto_last_opcode(32'd0),
+        .auto_last_error_info(32'd0),
         .reset_count(reset_count)
     );
 
@@ -222,17 +252,18 @@ module tb_s_axi_reg_reset;
                 end
             end
             begin
-                axi_write(32'h0000_0200, 32'h0000_0000);
+                axi_write(32'h0000_0000, 32'h0000_0001);
             end
         join
-        expect_equal("sq_valid after status clear", {23'd0, sq_valid}, 32'h0000_0000);
-        expect_equal("cq_valid after status clear", {23'd0, cq_valid}, 32'h0000_0000);
-        expect_equal("io_cq_irq_en after status clear", {23'd0, io_cq_irq_en}, 32'h0000_0000);
         if (saw_logic_rst == 0) begin
-            $display("FAIL: pcie_user_logic_rst did not pulse on status clear");
+            $display("FAIL: pcie_user_logic_rst did not pulse on control reset");
             $finish(1);
         end
 
+        axi_write(32'h0000_0200, 32'h0000_0000);
+        expect_equal("sq_valid after status clear", {23'd0, sq_valid}, 32'h0000_0000);
+        expect_equal("cq_valid after status clear", {23'd0, cq_valid}, 32'h0000_0000);
+        expect_equal("io_cq_irq_en after status clear", {23'd0, io_cq_irq_en}, 32'h0000_0000);
         $display("PASS: s_axi_reg reset/shutdown queue clear behavior");
         $finish;
     end

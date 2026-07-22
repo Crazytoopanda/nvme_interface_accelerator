@@ -595,15 +595,50 @@ wire										w_dma_cmd_wr_rdy_n;
 wire										w_s1_dma_cmd_wr_en;
 wire	[C_M0_AXI_ADDR_WIDTH+23:0]			w_s1_dma_cmd_wr_data0;
 wire	[C_M0_AXI_ADDR_WIDTH+23:0]			w_s1_dma_cmd_wr_data1;
+
+wire										w_auto_enable;
+wire										w_auto_reset;
+wire										w_auto_io_read_enable;
+wire										w_auto_io_write_enable;
+wire										w_auto_cq_enable;
+wire										w_auto_msi_enable;
+wire	[31:0]								w_auto_cq_mode;
+wire	[C_M0_AXI_ADDR_WIDTH-1:0]			w_auto_ddr_base;
+wire	[C_M0_AXI_ADDR_WIDTH-1:0]			w_auto_ddr_limit;
+wire	[8:0]								w_auto_io_enable_mask;
+wire	[31:0]								w_auto_error_clear;
+wire	[31:0]								w_auto_status;
+wire	[31:0]								w_auto_error;
+wire	[31:0]								w_auto_cmd_count;
+wire	[31:0]								w_auto_dma_submit_count;
+wire	[31:0]								w_auto_unsupported_count;
+wire	[31:0]								w_auto_last_qid_slot;
+wire	[31:0]								w_auto_last_opcode;
+wire	[31:0]								w_auto_last_error_info;
+wire	[31:0]								w_cq_dbg_write_count;
+wire	[31:0]								w_cq_dbg_last_dw2;
+wire	[31:0]								w_cq_dbg_last_dw3;
+wire										w_auto_hcmd_sq_rd_en;
+wire										w_auto_hcmd_table_rd_active;
+wire	[(P_SLOT_TAG_WIDTH+2)+1:0]			w_auto_hcmd_table_rd_addr;
+wire										w_auto_dma_cmd_wr_en;
+wire	[C_M0_AXI_ADDR_WIDTH+23:0]			w_auto_dma_cmd_wr_data0;
+wire	[C_M0_AXI_ADDR_WIDTH+23:0]			w_auto_dma_cmd_wr_data1;
+
+wire										w_hcmd_sq_rd_en_mux;
 wire										w_dma_cmd_wr_en_mux;
 wire	[C_M0_AXI_ADDR_WIDTH+23:0]			w_dma_cmd_wr_data0_mux;
 wire	[C_M0_AXI_ADDR_WIDTH+23:0]			w_dma_cmd_wr_data1_mux;
 
+assign w_hcmd_sq_rd_en_mux = w_hcmd_sq_rd_en | w_auto_hcmd_sq_rd_en;
 assign w_hcmd_table_rd_addr = w_s1_hcmd_table_rd_active ? w_s1_hcmd_table_rd_addr :
-								 w_s0_hcmd_table_rd_addr;
-assign w_dma_cmd_wr_en_mux = w_s1_dma_cmd_wr_en | w_dma_cmd_wr_en;
-assign w_dma_cmd_wr_data0_mux = (w_s1_dma_cmd_wr_en == 1) ? w_s1_dma_cmd_wr_data0 : w_dma_cmd_wr_data0;
-assign w_dma_cmd_wr_data1_mux = (w_s1_dma_cmd_wr_en == 1) ? w_s1_dma_cmd_wr_data1 : w_dma_cmd_wr_data1;
+								 (w_auto_hcmd_table_rd_active ? w_auto_hcmd_table_rd_addr :
+								 w_s0_hcmd_table_rd_addr);
+assign w_dma_cmd_wr_en_mux = w_s1_dma_cmd_wr_en | w_auto_dma_cmd_wr_en | w_dma_cmd_wr_en;
+assign w_dma_cmd_wr_data0_mux = (w_s1_dma_cmd_wr_en == 1) ? w_s1_dma_cmd_wr_data0 :
+								  ((w_auto_dma_cmd_wr_en == 1) ? w_auto_dma_cmd_wr_data0 : w_dma_cmd_wr_data0);
+assign w_dma_cmd_wr_data1_mux = (w_s1_dma_cmd_wr_en == 1) ? w_s1_dma_cmd_wr_data1 :
+								  ((w_auto_dma_cmd_wr_en == 1) ? w_auto_dma_cmd_wr_data1 : w_dma_cmd_wr_data1);
 
 wire										w_bar2_reg_req_pcie;
 wire										w_bar2_reg_wr_pcie;
@@ -872,6 +907,50 @@ axi_sqe_window_inst0 (
 	.dma_cmd_wr_rdy_n				(w_dma_cmd_wr_rdy_n)
 );
 
+nvme_auto_io_engine #(
+	.P_SLOT_TAG_WIDTH						(P_SLOT_TAG_WIDTH),
+	.C_M_AXI_ADDR_WIDTH					(C_M0_AXI_ADDR_WIDTH),
+	.C_PCIE_ADDR_WIDTH					(C_PCIE_ADDR_WIDTH)
+)
+nvme_auto_io_engine_inst0 (
+	.clk								(s0_axi_aclk),
+	.rst_n							(s0_axi_aresetn),
+
+	.auto_enable					(w_auto_enable),
+	.auto_reset						(w_auto_reset),
+	.auto_io_read_enable			(w_auto_io_read_enable),
+	.auto_io_write_enable		(w_auto_io_write_enable),
+	.auto_cq_enable				(w_auto_cq_enable),
+	.auto_msi_enable				(w_auto_msi_enable),
+	.auto_cq_mode					(w_auto_cq_mode),
+	.auto_ddr_base					(w_auto_ddr_base),
+	.auto_ddr_limit				(w_auto_ddr_limit),
+	.auto_io_enable_mask		(w_auto_io_enable_mask),
+	.auto_error_clear			(w_auto_error_clear),
+
+	.hcmd_sq_rd_en				(w_auto_hcmd_sq_rd_en),
+	.hcmd_sq_rd_data			(w_hcmd_sq_rd_data),
+	.hcmd_sq_empty_n			(w_hcmd_sq_empty_n),
+
+	.hcmd_table_rd_active		(w_auto_hcmd_table_rd_active),
+	.hcmd_table_rd_addr			(w_auto_hcmd_table_rd_addr),
+	.hcmd_table_rd_data			(w_hcmd_table_rd_data),
+
+	.dma_cmd_wr_en				(w_auto_dma_cmd_wr_en),
+	.dma_cmd_wr_data0			(w_auto_dma_cmd_wr_data0),
+	.dma_cmd_wr_data1			(w_auto_dma_cmd_wr_data1),
+	.dma_cmd_wr_rdy_n			(w_dma_cmd_wr_rdy_n),
+
+	.auto_status					(w_auto_status),
+	.auto_error					(w_auto_error),
+	.auto_cmd_count				(w_auto_cmd_count),
+	.auto_dma_submit_count		(w_auto_dma_submit_count),
+	.auto_unsupported_count		(w_auto_unsupported_count),
+	.auto_last_qid_slot		(w_auto_last_qid_slot),
+	.auto_last_opcode			(w_auto_last_opcode),
+	.auto_last_error_info		(w_auto_last_error_info)
+);
+
 s_axi_top # (
 	.P_SLOT_TAG_WIDTH						(P_SLOT_TAG_WIDTH), //slot_modified
 	.C_S0_AXI_ADDR_WIDTH					(C_S0_AXI_ADDR_WIDTH),
@@ -1119,7 +1198,30 @@ s_axi_top_inst0 (
 	.cfg_interrupt_mmenable					(w_cfg_interrupt_mmenable_sync),
 	.cfg_interrupt_msienable				(w_cfg_interrupt_msienable_sync),
 	.cfg_interrupt_msixenable				(w_cfg_interrupt_msixenable_sync),
-	.reset_count                            (w_reset_count)
+
+	.auto_enable							(w_auto_enable),
+	.auto_reset							(w_auto_reset),
+	.auto_io_read_enable				(w_auto_io_read_enable),
+	.auto_io_write_enable				(w_auto_io_write_enable),
+	.auto_cq_enable						(w_auto_cq_enable),
+	.auto_msi_enable					(w_auto_msi_enable),
+	.auto_cq_mode						(w_auto_cq_mode),
+	.auto_ddr_base						(w_auto_ddr_base),
+	.auto_ddr_limit						(w_auto_ddr_limit),
+	.auto_io_enable_mask				(w_auto_io_enable_mask),
+	.auto_error_clear					(w_auto_error_clear),
+	.auto_status						(w_auto_status),
+	.auto_error							(w_auto_error),
+	.auto_cmd_count						(w_auto_cmd_count),
+	.auto_dma_submit_count				(w_auto_dma_submit_count),
+	.auto_unsupported_count				(w_auto_unsupported_count),
+	.auto_last_qid_slot				(w_auto_last_qid_slot),
+	.auto_last_opcode					(w_auto_last_opcode),
+	.auto_last_error_info				(w_auto_last_error_info),
+	.cq_dbg_write_count				(w_cq_dbg_write_count),
+	.cq_dbg_last_dw2					(w_cq_dbg_last_dw2),
+		.cq_dbg_last_dw3					(w_cq_dbg_last_dw3),
+		.reset_count                            (w_reset_count)
 );
 
 
@@ -1314,7 +1416,11 @@ nvme_pcie_inst0(
 		.bar2_pf1_msi_irq_req			(w_bar2_pf1_msi_irq_req_pcie),
 		.bar2_pf1_msi_irq_vector			(w_bar2_pf1_msi_vector_pcie),
 
-	.nvme_cc_en								(w_nvme_cc_en),
+		.cq_dbg_write_count				(w_cq_dbg_write_count),
+		.cq_dbg_last_dw2				(w_cq_dbg_last_dw2),
+		.cq_dbg_last_dw3				(w_cq_dbg_last_dw3),
+
+		.nvme_cc_en								(w_nvme_cc_en),
 	.nvme_cc_shn							(w_nvme_cc_shn),
 
 	.nvme_csts_shst							(w_nvme_csts_shst_sync),
@@ -1375,7 +1481,7 @@ nvme_pcie_inst0(
 	.io_cq7_iv								(w_io_cq7_iv_sync),
 	.io_cq8_iv								(w_io_cq8_iv_sync),
 
-	.hcmd_sq_rd_en							(w_hcmd_sq_rd_en),
+	.hcmd_sq_rd_en							(w_hcmd_sq_rd_en_mux),
 	.hcmd_sq_rd_data						(w_hcmd_sq_rd_data),
 	.hcmd_sq_empty_n						(w_hcmd_sq_empty_n),
 

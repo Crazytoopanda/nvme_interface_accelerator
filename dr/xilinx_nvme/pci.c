@@ -91,6 +91,10 @@ static const struct kernel_param_ops io_queue_count_ops = {
 	.get = param_get_uint,
 };
 
+static unsigned int io_queues;
+module_param_cb(io_queues, &io_queue_count_ops, &io_queues, 0644);
+MODULE_PARM_DESC(io_queues, "limit the number of interrupt-driven IO queues; 0 uses the default CPU-based count");
+
 static unsigned int write_queues;
 module_param_cb(write_queues, &io_queue_count_ops, &write_queues, 0644);
 MODULE_PARM_DESC(write_queues,
@@ -1030,8 +1034,10 @@ static inline void nvme_handle_cqe(struct nvme_queue *nvmeq,
 	req = nvme_find_rq(nvme_queue_tagset(nvmeq), command_id);
 	if (unlikely(!req)) {
 		dev_warn(nvmeq->dev->ctrl.device,
-			"invalid id %d completed on queue %d\n",
-			command_id, le16_to_cpu(cqe->sq_id));
+			"invalid id %#x completed on cqe_sqid %d handler_qid %u vector %u cqe_idx %u cq_head %u phase %u cqe_status %#x\n",
+			command_id, le16_to_cpu(cqe->sq_id), nvmeq->qid,
+			nvmeq->cq_vector, idx, nvmeq->cq_head, nvmeq->cq_phase,
+			le16_to_cpu(cqe->status));
 		return;
 	}
 
@@ -2253,6 +2259,8 @@ static unsigned int nvme_max_io_queues(struct nvme_dev *dev)
 	 */
 	if (dev->ctrl.quirks & NVME_QUIRK_SHARED_TAGS)
 		return 1;
+	if (io_queues)
+		return min_t(unsigned int, io_queues, num_possible_cpus());
 	return num_possible_cpus() + dev->nr_write_queues + dev->nr_poll_queues;
 }
 

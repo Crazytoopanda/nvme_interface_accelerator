@@ -74,34 +74,47 @@ module nvme_cq_check # (
 	
 );
 
-localparam	LP_CQ_IRQ_DELAY_TIME			= 8'h01;
+localparam	LP_CQ_IRQ_DELAY_TIME			= 16'h0008;
+localparam	LP_CQ_IRQ_PRE_DELAY_TIME		= 16'h0010;
 
 
-localparam	S_IDLE							= 4'b0001;
-localparam	S_CQ_MSI_IRQ_REQ				= 4'b0010;
-localparam	S_CQ_MSI_HEAD_SET				= 4'b0100;
-localparam	S_CQ_MSI_IRQ_TIMER				= 4'b1000;
+localparam	S_IDLE							= 5'b00001;
+localparam	S_CQ_MSI_IRQ_DELAY			= 5'b00010;
+localparam	S_CQ_MSI_IRQ_REQ				= 5'b00100;
+localparam	S_CQ_MSI_HEAD_SET				= 5'b01000;
+localparam	S_CQ_MSI_IRQ_TIMER			= 5'b10000;
 
-reg		[3:0]								cur_state;
-reg		[3:0]								next_state;
+reg		[4:0]								cur_state;
+reg		[4:0]								next_state;
 
 reg		[7:0]								r_cq_tail_ptr;
 reg		[7:0]								r_cq_msi_irq_head_ptr;
-reg		[7:0]								r_irq_timer;
+reg		[15:0]								r_irq_timer;
 reg											r_cq_legacy_irq_req;
 reg											r_cq_msi_irq_req;
+reg											r_irq_armed;
 
-wire										w_cq_rst_n;
+wire											w_cq_rst_n;
+wire											w_cq_irq_enabled;
+wire											w_cq_msi_pending;
 
 assign cq_legacy_irq_req = r_cq_legacy_irq_req;
 assign cq_msi_irq_req = r_cq_msi_irq_req;
 
 assign w_cq_rst_n = pcie_user_rst_n & cq_rst_n;
+assign w_cq_irq_enabled = pcie_msi_en & cq_valid & io_cq_irq_en;
+assign w_cq_msi_pending = r_irq_armed & (r_cq_msi_irq_head_ptr != r_cq_tail_ptr) & w_cq_irq_enabled;
 
-always @ (posedge pcie_user_clk)
+always @ (posedge pcie_user_clk or negedge w_cq_rst_n)
 begin
-	r_cq_tail_ptr <= cq_tail_ptr;
-	r_cq_legacy_irq_req <= ((cq_head_ptr != r_cq_tail_ptr) && ((cq_valid & io_cq_irq_en) == 1));
+	if(w_cq_rst_n == 0) begin
+		r_cq_tail_ptr <= 0;
+		r_cq_legacy_irq_req <= 0;
+	end
+	else begin
+		r_cq_tail_ptr <= cq_tail_ptr;
+		r_cq_legacy_irq_req <= r_irq_armed & (cq_head_ptr != r_cq_tail_ptr) & (cq_valid & io_cq_irq_en);
+	end
 end
 
 always @ (posedge pcie_user_clk or negedge w_cq_rst_n)
@@ -116,10 +129,16 @@ always @ (*)
 begin
 	case(cur_state)
 		S_IDLE: begin
-			if(((r_cq_msi_irq_head_ptr != r_cq_tail_ptr) & (pcie_msi_en & cq_valid & io_cq_irq_en)) == 1)
-				next_state <= S_CQ_MSI_IRQ_REQ;
+			if(w_cq_msi_pending == 1'b1)
+				next_state <= S_CQ_MSI_IRQ_DELAY;
 			else
 				next_state <= S_IDLE;
+		end
+		S_CQ_MSI_IRQ_DELAY: begin
+			if(r_irq_timer == 0)
+				next_state <= S_CQ_MSI_IRQ_REQ;
+			else
+				next_state <= S_CQ_MSI_IRQ_DELAY;
 		end
 		S_CQ_MSI_IRQ_REQ: begin
 			if(cq_msi_irq_ack == 1)
@@ -128,13 +147,10 @@ begin
 				next_state <= S_CQ_MSI_IRQ_REQ;
 		end
 		S_CQ_MSI_HEAD_SET: begin
-/*
 			if(cq_head_update == 1 || (cq_head_ptr == r_cq_tail_ptr))
 				next_state <= S_CQ_MSI_IRQ_TIMER;
 			else
 				next_state <= S_CQ_MSI_HEAD_SET;
-*/
-			next_state <= S_CQ_MSI_IRQ_TIMER;
 		end
 		S_CQ_MSI_IRQ_TIMER: begin
 			if(r_irq_timer == 0)
@@ -153,7 +169,11 @@ always @ (posedge pcie_user_clk)
 begin
 	case(cur_state)
 		S_IDLE: begin
-
+			if(w_cq_msi_pending == 1'b1)
+				r_irq_timer <= LP_CQ_IRQ_PRE_DELAY_TIME;
+		end
+		S_CQ_MSI_IRQ_DELAY: begin
+			r_irq_timer <= r_irq_timer - 1;
 		end
 		S_CQ_MSI_IRQ_REQ: begin
 
@@ -174,18 +194,26 @@ always @ (posedge pcie_user_clk or negedge w_cq_rst_n)
 begin
 	if(w_cq_rst_n == 0) begin
 		r_cq_msi_irq_head_ptr <= 0;
+		r_irq_armed <= 0;
 	end
 	else begin
 		case(cur_state)
 			S_IDLE: begin
-				if((pcie_msi_en & cq_valid & io_cq_irq_en) == 0)
+				if(w_cq_irq_enabled == 1'b0) begin
 					r_cq_msi_irq_head_ptr <= r_cq_tail_ptr;
+					r_irq_armed <= 1'b0;
+				end
+				else if(r_irq_armed == 1'b0) begin
+					r_cq_msi_irq_head_ptr <= r_cq_tail_ptr;
+					r_irq_armed <= 1'b1;
+				end
 			end
 			S_CQ_MSI_IRQ_REQ: begin
-
+				if(cq_msi_irq_ack == 1'b1)
+					r_cq_msi_irq_head_ptr <= r_cq_tail_ptr;
 			end
 			S_CQ_MSI_HEAD_SET: begin
-				r_cq_msi_irq_head_ptr <= r_cq_tail_ptr;
+
 			end
 			S_CQ_MSI_IRQ_TIMER: begin
 

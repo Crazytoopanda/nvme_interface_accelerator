@@ -100,6 +100,10 @@ module nvme_pcie # (
 	input											bar2_pf1_msi_irq_req,
 	input	[8:0]								bar2_pf1_msi_irq_vector,
 
+	output	[31:0]								cq_dbg_write_count,
+	output	[31:0]								cq_dbg_last_dw2,
+	output	[31:0]								cq_dbg_last_dw3,
+
 	output									nvme_cc_en,
 	output	[1:0]							nvme_cc_shn,
 
@@ -455,6 +459,7 @@ reg										r_tx_cpld_bar2_pending;
 wire										w_tx_cpld_mux_start;
 wire										w_tx_cpld_mux_start_bar2;
 wire										w_tx_cpld_mux_bar2;
+wire	w_nvme_cmd_rst_n;
 wire										w_mux_tx_cpld_req;
 wire	[7:0]							w_mux_tx_cpld_tag;
 wire	[15:0]							w_mux_tx_cpld_req_id;
@@ -498,6 +503,8 @@ assign w_mux_tx_cpld_attr = w_tx_cpld_mux_bar2 ? w_bar2_tx_cpld_attr : w_tx_cpld
 assign w_mux_tx_cpld_at = w_tx_cpld_mux_bar2 ? w_bar2_tx_cpld_at : w_tx_cpld_at;
 assign w_mux_tx_cpld_be = w_tx_cpld_mux_bar2 ? w_bar2_tx_cpld_be : w_tx_cpld_be;
 assign w_mux_tx_cpld_func_num = w_tx_cpld_mux_bar2 ? w_bar2_tx_cpld_func_num : 8'h00;
+// Flush NVMe command-path queues across host controller reset epochs.
+assign w_nvme_cmd_rst_n = pcie_user_rst_n & nvme_cc_en;
 
 assign w_bar0_tx_cpld_req_ack = r_tx_cpld_mux_valid & ~r_tx_cpld_mux_bar2 & w_tx_cpld_req_ack;
 assign w_bar2_tx_cpld_req_ack = r_tx_cpld_mux_valid & r_tx_cpld_mux_bar2 & w_tx_cpld_req_ack;
@@ -634,7 +641,7 @@ pcie_hcmd # (
 )
 pcie_hcmd_inst0(
 	.pcie_user_clk							(pcie_user_clk),
-	.pcie_user_rst_n						(pcie_user_rst_n),
+	.pcie_user_rst_n						(w_nvme_cmd_rst_n),
 
 	.admin_sq_bs_addr						(w_admin_sq_bs_addr),
 	.admin_cq_bs_addr						(w_admin_cq_bs_addr),
@@ -758,7 +765,11 @@ pcie_hcmd_inst0(
 	.hcmd_cq_wr1_en							(hcmd_cq_wr1_en),
 	.hcmd_cq_wr1_data0						(hcmd_cq_wr1_data0),
 	.hcmd_cq_wr1_data1						(hcmd_cq_wr1_data1),
-	.hcmd_cq_wr1_rdy_n						(hcmd_cq_wr1_rdy_n)
+	.hcmd_cq_wr1_rdy_n						(hcmd_cq_wr1_rdy_n),
+
+	.cq_dbg_write_count						(cq_dbg_write_count),
+	.cq_dbg_last_dw2						(cq_dbg_last_dw2),
+	.cq_dbg_last_dw3						(cq_dbg_last_dw3)
 );
 
 
@@ -771,7 +782,7 @@ dma_if # (
 dma_if_inst0
 (
 	.pcie_user_clk							(pcie_user_clk),
-	.pcie_user_rst_n						(pcie_user_rst_n),
+	.pcie_user_rst_n						(w_nvme_cmd_rst_n),
 
 	.pcie_max_payload_size					(cfg_max_payload),
 	.pcie_max_read_req_size					(cfg_max_read_req),

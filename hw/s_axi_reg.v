@@ -205,9 +205,32 @@ module s_axi_reg # (
 	input	[3:0]							cfg_command,
 	input	[2:0]							cfg_interrupt_mmenable,
 	input									cfg_interrupt_msienable,
-	input									cfg_interrupt_msixenable,
-	
-	output [3:0]							reset_count
+	input										cfg_interrupt_msixenable,
+
+	output										auto_enable,
+	output										auto_reset,
+	output										auto_io_read_enable,
+	output										auto_io_write_enable,
+	output										auto_cq_enable,
+	output										auto_msi_enable,
+	output	[31:0]							auto_cq_mode,
+	output	[C_M_AXI_ADDR_WIDTH-1:0]			auto_ddr_base,
+	output	[C_M_AXI_ADDR_WIDTH-1:0]			auto_ddr_limit,
+	output	[8:0]								auto_io_enable_mask,
+	output	[31:0]							auto_error_clear,
+	input	[31:0]							auto_status,
+	input	[31:0]							auto_error,
+	input	[31:0]							auto_cmd_count,
+	input	[31:0]							auto_dma_submit_count,
+	input	[31:0]							auto_unsupported_count,
+	input	[31:0]							auto_last_qid_slot,
+	input	[31:0]							auto_last_opcode,
+	input	[31:0]							auto_last_error_info,
+	input	[31:0]							cq_dbg_write_count,
+	input	[31:0]							cq_dbg_last_dw2,
+	input	[31:0]							cq_dbg_last_dw3,
+
+	output [3:0]									reset_count
 );
 
 localparam	S_WR_IDLE						= 8'b00000001;
@@ -343,26 +366,30 @@ reg		[31:0]								r_wdata;
 reg											r_awaddr_cntl_reg_en;
 //reg											r_awaddr_pcie_reg_en;
 reg											r_awaddr_nvme_reg_en;
-reg											r_awaddr_nvme_fifo_en;
-reg											r_awaddr_hcmd_cq_wr1_en;
+reg										r_awaddr_nvme_fifo_en;
+reg										r_awaddr_auto_reg_en;
+reg										r_awaddr_hcmd_cq_wr1_en;
 reg											r_awaddr_dma_cmd_wr_en;
 reg											r_cntl_reg_en;
 //reg											r_pcie_reg_en;
 reg											r_nvme_reg_en;
-reg											r_nvme_fifo_en;
+reg										r_nvme_fifo_en;
+reg										r_auto_reg_en;
 
 
 reg		[31:0]								r_rdata;
     reg											r_araddr_cntl_reg_en;
     reg											r_araddr_pcie_reg_en;
     reg											r_araddr_nvme_reg_en;
-    reg											r_araddr_nvme_fifo_en;
-    reg											r_araddr_hcmd_table_rd_en;
+        reg										r_araddr_nvme_fifo_en;
+    reg										r_araddr_auto_reg_en;
+    reg										r_araddr_hcmd_table_rd_en;
     reg											r_araddr_hcmd_sq_rd_en;
 reg		[31:0]								r_cntl_reg_rdata;
 reg		[31:0]								r_pcie_reg_rdata;
 reg		[31:0]								r_nvme_reg_rdata;
 reg		[31:0]								r_nvme_fifo_rdata;
+reg		[31:0]								r_auto_reg_rdata;
 
 reg											r_pcie_link_up;
 reg		[3:0]								r_cfg_command;
@@ -404,6 +431,7 @@ wire										w_bar2_write_reg_active;
 wire										w_bar2_cntl_reg_en;
 wire										w_bar2_nvme_reg_en;
 wire										w_bar2_nvme_fifo_en;
+wire										w_bar2_auto_reg_en;
 wire										w_bar2_hcmd_cq_wr1_en;
 wire										w_bar2_dma_cmd_wr_en;
 wire	[15:2]								w_reg_wr_addr;
@@ -412,6 +440,7 @@ wire	[31:0]								w_reg_wdata;
 wire										w_cntl_reg_en;
 wire										w_nvme_reg_en;
 wire										w_nvme_fifo_en;
+wire										w_auto_reg_en;
 wire	[31:0]								w_bar2_reg_read_data;
 wire	[31:0]								w_bar2_bram_read_data;
 
@@ -455,6 +484,20 @@ reg		[7:0]							r_dma_rx_direct_done_cnt_d;
 reg		[7:0]							r_dma_tx_direct_done_cnt_d;
 reg		[7:0]							r_dma_rx_done_cnt_d;
 reg		[7:0]							r_dma_tx_done_cnt_d;
+
+reg		[31:0]								r_auto_ctrl;
+reg		[C_M_AXI_ADDR_WIDTH-1:0]			r_auto_ddr_base;
+reg		[C_M_AXI_ADDR_WIDTH-1:0]			r_auto_ddr_limit;
+reg		[8:0]								r_auto_io_enable_mask;
+reg		[31:0]								r_auto_pf0_msi_ctrl;
+reg		[31:0]								r_auto_cq_mode;
+reg		[31:0]								r_auto_error_clear;
+reg										r_auto_reset_pulse;
+reg		[31:0]								r_auto_cq_irq_retry_count;
+reg		[3:0]								r_auto_cq_irq_retry_last_cqid;
+reg		[8:0]								w_auto_cq_irq_retry_vector;
+wire	[3:0]								w_auto_cq_irq_retry_cqid;
+wire										w_auto_cq_irq_retry_wr;
 
 wire	[P_BAR2_DMA_RING_DESC_WIDTH-1:0]	w_bar2_dma_ring_desc_idx;
 wire	[2:0]								w_bar2_dma_ring_desc_dw;
@@ -592,6 +635,20 @@ assign w_reg_dma_cmd_wr_data1 = {{(C_M_AXI_ADDR_WIDTH-32){1'b0}}, r_dma_cmd_auto
 assign dma_cmd_wr_data0 = (r_dma_ring_cmd_wr_en == 1'b1) ? r_dma_ring_cmd_wr_data0 : w_reg_dma_cmd_wr_data0;
 assign dma_cmd_wr_data1 = (r_dma_ring_cmd_wr_en == 1'b1) ? r_dma_ring_cmd_wr_data1 : w_reg_dma_cmd_wr_data1;
 assign reset_count = r_reset_count;
+assign auto_enable = r_auto_ctrl[0];
+assign auto_reset = r_auto_reset_pulse;
+assign auto_io_read_enable = r_auto_ctrl[8];
+assign auto_io_write_enable = r_auto_ctrl[9];
+assign auto_cq_enable = r_auto_ctrl[10];
+assign auto_msi_enable = r_auto_ctrl[11];
+assign auto_cq_mode = r_auto_cq_mode;
+assign auto_ddr_base = r_auto_ddr_base;
+assign auto_ddr_limit = r_auto_ddr_limit;
+assign auto_io_enable_mask = r_auto_io_enable_mask;
+assign auto_error_clear = r_auto_error_clear;
+assign w_auto_cq_irq_retry_cqid = w_reg_wdata[7:4];
+assign w_auto_cq_irq_retry_wr = w_auto_reg_en & (w_reg_wr_addr[7:2] == 6'h16) &
+									 w_reg_wdata[0] & (w_auto_cq_irq_retry_cqid <= 4'h8);
 
 
 assign w_bar2_addr_in_range = (r_bar2_addr[17] == 1'b0);
@@ -605,6 +662,7 @@ assign w_bar2_write_reg_active = (r_bar2_state == S_BAR2_WRITE) & r_bar2_wr & w_
 assign w_bar2_cntl_reg_en = w_bar2_write_reg_active & (r_bar2_addr[15:8] == 8'h0);
 assign w_bar2_nvme_reg_en = w_bar2_write_reg_active & (r_bar2_addr[15:8] == 8'h2);
 assign w_bar2_nvme_fifo_en = w_bar2_write_reg_active & (r_bar2_addr[15:8] == 8'h3);
+assign w_bar2_auto_reg_en = w_bar2_write_reg_active & (r_bar2_addr[15:8] == 8'h4);
 assign w_bar2_hcmd_cq_wr1_en = (r_bar2_state == S_BAR2_WR_CQ);
 assign w_bar2_dma_cmd_wr_en = (r_bar2_state == S_BAR2_WR_DMA);
 
@@ -614,6 +672,7 @@ assign w_reg_wdata = (w_bar2_write_reg_active == 1) ? r_bar2_wdata : r_wdata;
 assign w_cntl_reg_en = r_cntl_reg_en | w_bar2_cntl_reg_en;
 assign w_nvme_reg_en = r_nvme_reg_en | w_bar2_nvme_reg_en;
 assign w_nvme_fifo_en = r_nvme_fifo_en | w_bar2_nvme_fifo_en;
+assign w_auto_reg_en = r_auto_reg_en | w_bar2_auto_reg_en;
 
 assign w_bar2_dma_ring_hit = (r_bar2_addr[17:13] == 5'b10000);
 assign w_bar2_dma_ring_ctrl_hit = (r_bar2_addr[17:12] == 6'h22);
@@ -685,11 +744,28 @@ begin
 	endcase
 end
 
+always @ (*)
+begin
+	case(w_auto_cq_irq_retry_cqid)
+		4'h0: w_auto_cq_irq_retry_vector = 9'b000000001;
+		4'h1: w_auto_cq_irq_retry_vector = 9'b000000001 << r_io_cq1_iv;
+		4'h2: w_auto_cq_irq_retry_vector = 9'b000000001 << r_io_cq2_iv;
+		4'h3: w_auto_cq_irq_retry_vector = 9'b000000001 << r_io_cq3_iv;
+		4'h4: w_auto_cq_irq_retry_vector = 9'b000000001 << r_io_cq4_iv;
+		4'h5: w_auto_cq_irq_retry_vector = 9'b000000001 << r_io_cq5_iv;
+		4'h6: w_auto_cq_irq_retry_vector = 9'b000000001 << r_io_cq6_iv;
+		4'h7: w_auto_cq_irq_retry_vector = 9'b000000001 << r_io_cq7_iv;
+		4'h8: w_auto_cq_irq_retry_vector = 9'b000000001 << r_io_cq8_iv;
+		default: w_auto_cq_irq_retry_vector = 9'b000000001;
+	endcase
+end
+
 assign w_bar2_reg_read_data = (r_bar2_addr[17] == 1'b1) ? 32'h0 :
 								((r_bar2_addr[16:8] == 9'h0) ? r_cntl_reg_rdata :
 								((r_bar2_addr[16:8] == 9'h1) ? r_pcie_reg_rdata :
 								((r_bar2_addr[16:8] == 9'h2) ? r_nvme_reg_rdata :
-								((r_bar2_addr[16:8] == 9'h3) ? r_nvme_fifo_rdata : 32'h0))));
+								((r_bar2_addr[16:8] == 9'h3) ? r_nvme_fifo_rdata :
+								((r_bar2_addr[16:8] == 9'h4) ? r_auto_reg_rdata : 32'h0)))));
 assign w_bar2_bram_read_data = (r_bar2_hcmd_sq_rd_pending == 1) ?
 								{1'b1, {(17-P_SLOT_TAG_WIDTH){1'b0}}, hcmd_sq_rd_data[(P_SLOT_TAG_WIDTH+12)-1:(P_SLOT_TAG_WIDTH+4)], 1'b0, hcmd_sq_rd_data[(P_SLOT_TAG_WIDTH+4)-1:4], 1'b0, hcmd_sq_rd_data[3:0]} :
 								((r_bar2_hcmd_table_rd_pending == 1) ? hcmd_table_rd_data : 32'h0);
@@ -811,6 +887,7 @@ begin
 //			r_awaddr_pcie_reg_en <= (r_s_axi_awaddr[15:8] == 8'h1);
 			r_awaddr_nvme_reg_en <= (r_s_axi_awaddr[15:8] == 8'h2);
 			r_awaddr_nvme_fifo_en <= (r_s_axi_awaddr[15:8] == 8'h3);
+			r_awaddr_auto_reg_en <= (r_s_axi_awaddr[15:8] == 8'h4);
 			r_awaddr_hcmd_cq_wr1_en <= (r_s_axi_awaddr[15:2] == 14'hD0);
 			r_awaddr_dma_cmd_wr_en <= (r_s_axi_awaddr[15:2] == 14'hCC); //slot_modified
 		end
@@ -850,6 +927,7 @@ begin
 //			r_pcie_reg_en <= 0;
 			r_nvme_reg_en <= 0;
 			r_nvme_fifo_en <= 0;
+			r_auto_reg_en <= 0;
 			r_hcmd_cq_wr1_en <= 0;
 			r_dma_cmd_wr_en <= 0;
 		end
@@ -862,6 +940,7 @@ begin
 //			r_pcie_reg_en <= 0;
 			r_nvme_reg_en <= 0;
 			r_nvme_fifo_en <= 0;
+			r_auto_reg_en <= 0;
 			r_hcmd_cq_wr1_en <= 0;
 			r_dma_cmd_wr_en <= 0;
 		end
@@ -874,6 +953,7 @@ begin
 //			r_pcie_reg_en <= 0;
 			r_nvme_reg_en <= 0;
 			r_nvme_fifo_en <= 0;
+			r_auto_reg_en <= 0;
 			r_hcmd_cq_wr1_en <= 0;
 			r_dma_cmd_wr_en <= 0;
 		end
@@ -886,6 +966,7 @@ begin
 //			r_pcie_reg_en <= r_awaddr_pcie_reg_en;
 			r_nvme_reg_en <= r_awaddr_nvme_reg_en;
 			r_nvme_fifo_en <= r_awaddr_nvme_fifo_en;
+			r_auto_reg_en <= r_awaddr_auto_reg_en;
 			r_hcmd_cq_wr1_en <= 0;
 			r_dma_cmd_wr_en <= 0;
 		end
@@ -898,6 +979,7 @@ begin
 //			r_pcie_reg_en <= 0;
 			r_nvme_reg_en <= 0;
 			r_nvme_fifo_en <= 0;
+			r_auto_reg_en <= 0;
 			r_hcmd_cq_wr1_en <= 0;
 			r_dma_cmd_wr_en <= 0;
 		end
@@ -910,6 +992,7 @@ begin
 //			r_pcie_reg_en <= 0;
 			r_nvme_reg_en <= 0;
 			r_nvme_fifo_en <= 0;
+			r_auto_reg_en <= 0;
 			r_hcmd_cq_wr1_en <= 1;
 			r_dma_cmd_wr_en <= 0;
 		end
@@ -922,6 +1005,7 @@ begin
 //			r_pcie_reg_en <= 0;
 			r_nvme_reg_en <= 0;
 			r_nvme_fifo_en <= 0;
+			r_auto_reg_en <= 0;
 			r_hcmd_cq_wr1_en <= 0;
 			r_dma_cmd_wr_en <= 0;
 		end
@@ -934,6 +1018,7 @@ begin
 //			r_pcie_reg_en <= 0;
 			r_nvme_reg_en <= 0;
 			r_nvme_fifo_en <= 0;
+			r_auto_reg_en <= 0;
 			r_hcmd_cq_wr1_en <= 0;
 			r_dma_cmd_wr_en <= 1;
 		end
@@ -946,6 +1031,7 @@ begin
 //			r_pcie_reg_en <= 0;
 			r_nvme_reg_en <= 0;
 			r_nvme_fifo_en <= 0;
+			r_auto_reg_en <= 0;
 			r_hcmd_cq_wr1_en <= 0;
 			r_dma_cmd_wr_en <= 0;
 		end
@@ -981,6 +1067,8 @@ begin
 		r_bar2_pf0_msi_enable <= 0;
 		r_bar2_pf0_msi_vector <= 9'b000000001;
 		r_bar2_pf0_msi_req_toggle <= 0;
+		r_auto_cq_irq_retry_count <= 0;
+		r_auto_cq_irq_retry_last_cqid <= 0;
 		r_dma_rx_direct_done_cnt_d <= 0;
 		r_dma_tx_direct_done_cnt_d <= 0;
 		r_dma_rx_done_cnt_d <= 0;
@@ -1035,6 +1123,18 @@ begin
 			(r_bar2_pf0_msi_enable == 1'b1)) begin
 			r_bar2_pf0_msi_req_toggle <= ~r_bar2_pf0_msi_req_toggle;
 			r_bar2_pf0_msi_count <= r_bar2_pf0_msi_count + 1;
+		end
+
+		if(((r_nvme_cc_en == 1'b1) && (nvme_cc_en == 1'b0)) ||
+			((w_auto_reg_en == 1'b1) && (w_reg_wr_addr[7:2] == 6'h01) && (w_reg_wdata[1] == 1'b1))) begin
+			r_auto_cq_irq_retry_count <= 0;
+			r_auto_cq_irq_retry_last_cqid <= 0;
+		end
+		else if(w_auto_cq_irq_retry_wr == 1'b1) begin
+			r_bar2_pf0_msi_vector <= w_auto_cq_irq_retry_vector;
+			r_bar2_pf0_msi_req_toggle <= ~r_bar2_pf0_msi_req_toggle;
+			r_auto_cq_irq_retry_count <= r_auto_cq_irq_retry_count + 1;
+			r_auto_cq_irq_retry_last_cqid <= w_auto_cq_irq_retry_cqid;
 		end
 
 		if((w_bar2_dma_ring_ctrl_wr_en == 1'b1) && (r_bar2_addr[7:2] == 6'h01) && (r_bar2_wdata[0] == 1'b1) &&
@@ -1269,7 +1369,22 @@ begin
 	    r_reset_count <= 0;
 	end
 	else begin
-		if(w_nvme_reg_en == 1) begin
+		if((r_nvme_cc_en == 1'b1) && (nvme_cc_en == 1'b0)) begin
+			r_sq_valid <= 0;
+			r_cq_valid <= 0;
+			r_io_cq_irq_en <= 0;
+			r_nvme_csts_shst <= 0;
+			r_nvme_csts_rdy <= 0;
+		end
+		else if((w_nvme_reg_en == 1'b1) && (w_reg_wr_addr[7:2] == 6'h00) && (w_reg_wdata[4] == 1'b0)) begin
+			r_sq_valid <= 0;
+			r_cq_valid <= 0;
+			r_io_cq_irq_en <= 0;
+			r_reset_count <= w_reg_wdata[10:7];
+			r_nvme_csts_shst <= w_reg_wdata[6:5];
+			r_nvme_csts_rdy <= w_reg_wdata[4];
+		end
+		else if(w_nvme_reg_en == 1) begin
 			case(w_reg_wr_addr[7:2])
 				6'h00: begin
 				    r_reset_count <= w_reg_wdata[10:7];
@@ -1510,6 +1625,47 @@ end
 
 always @ (posedge s_axi_aclk or negedge s_axi_aresetn)
 begin
+	if(s_axi_aresetn == 0) begin
+		r_auto_ctrl <= 0;
+		r_auto_ddr_base <= 0;
+		r_auto_ddr_limit <= 0;
+		r_auto_io_enable_mask <= 9'h1fe;
+		r_auto_pf0_msi_ctrl <= 0;
+		r_auto_cq_mode <= 0;
+		r_auto_error_clear <= 0;
+		r_auto_reset_pulse <= 0;
+	end
+	else begin
+		r_auto_error_clear <= 0;
+		r_auto_reset_pulse <= 0;
+
+		if((r_nvme_cc_en == 1'b1) && (nvme_cc_en == 1'b0)) begin
+			r_auto_ctrl <= 0;
+			r_auto_error_clear <= 32'hffff_ffff;
+			r_auto_reset_pulse <= 1'b1;
+		end
+		else if(w_auto_reg_en == 1) begin
+			case(w_reg_wr_addr[7:2])
+				6'h01: begin
+					r_auto_ctrl <= w_reg_wdata & 32'hffff_fffd;
+					r_auto_reset_pulse <= w_reg_wdata[1];
+				end
+				6'h03: r_auto_error_clear <= w_reg_wdata;
+				6'h04: r_auto_ddr_base[31:0] <= w_reg_wdata;
+				6'h05: r_auto_ddr_base[C_M_AXI_ADDR_WIDTH-1:32] <= w_reg_wdata[C_M_AXI_ADDR_WIDTH-33:0];
+				6'h06: r_auto_ddr_limit[31:0] <= w_reg_wdata;
+				6'h07: r_auto_ddr_limit[C_M_AXI_ADDR_WIDTH-1:32] <= w_reg_wdata[C_M_AXI_ADDR_WIDTH-33:0];
+				6'h08: r_auto_io_enable_mask <= w_reg_wdata[8:0];
+				6'h09: r_auto_pf0_msi_ctrl <= w_reg_wdata;
+				6'h0A: r_auto_cq_mode <= w_reg_wdata;
+			endcase
+		end
+	end
+end
+
+
+always @ (posedge s_axi_aclk or negedge s_axi_aresetn)
+begin
 	if(s_axi_aresetn == 0)
 		cur_rd_state <= S_RD_IDLE;
 	else
@@ -1560,15 +1716,17 @@ begin
 			r_araddr_pcie_reg_en <= (r_s_axi_araddr[16:8] == 9'h1);
 			r_araddr_nvme_reg_en <= (r_s_axi_araddr[16:8] == 9'h2);
 			r_araddr_nvme_fifo_en <= (r_s_axi_araddr[16:8] == 9'h3);
+			r_araddr_auto_reg_en <= (r_s_axi_araddr[16:8] == 9'h4);
 			r_araddr_hcmd_table_rd_en <= (r_s_axi_araddr[16] == 1'b1); //slot_modified
 			r_araddr_hcmd_sq_rd_en <= (r_s_axi_araddr[16:2] == 15'hC0) & hcmd_sq_empty_n;
 		end
 		S_AR_REG: begin
-			case({r_araddr_nvme_fifo_en, r_araddr_nvme_reg_en, r_araddr_pcie_reg_en, r_araddr_cntl_reg_en}) // synthesis parallel_case full_case
-				4'b0001: r_rdata <= r_cntl_reg_rdata;
-				4'b0010: r_rdata <= r_pcie_reg_rdata;
-				4'b0100: r_rdata <= r_nvme_reg_rdata;
-				4'b1000: r_rdata <= r_nvme_fifo_rdata;
+			case({r_araddr_auto_reg_en, r_araddr_nvme_fifo_en, r_araddr_nvme_reg_en, r_araddr_pcie_reg_en, r_araddr_cntl_reg_en}) // synthesis parallel_case full_case
+				5'b00001: r_rdata <= r_cntl_reg_rdata;
+				5'b00010: r_rdata <= r_pcie_reg_rdata;
+				5'b00100: r_rdata <= r_nvme_reg_rdata;
+				5'b01000: r_rdata <= r_nvme_fifo_rdata;
+				5'b10000: r_rdata <= r_auto_reg_rdata;
 			endcase
 		end
 		S_BRAM_READ: begin
@@ -1708,6 +1866,36 @@ begin
 		6'h07: r_nvme_fifo_rdata = {r_dma_cmd_type, r_dma_cmd_dir, 7'b0, r_dma_cmd_4k_offset, r_dma_cmd_auto_cpl, r_dma_cmd_dev_len, 2'b0};
 		6'h08: r_nvme_fifo_rdata = {{(32-P_SLOT_TAG_WIDTH){1'b0}}, r_dma_cmd_hcmd_slot_tag}; //slot_modified
 		6'h09: r_nvme_fifo_rdata = {{(64-C_M_AXI_ADDR_WIDTH){1'b0}}, r_dma_cmd_dev_addr[C_M_AXI_ADDR_WIDTH-1:32]};
+		6'h11: r_nvme_fifo_rdata = {hcmd_sq_empty_n, {(17-P_SLOT_TAG_WIDTH){1'b0}}, hcmd_sq_rd_data[(P_SLOT_TAG_WIDTH+12)-1:(P_SLOT_TAG_WIDTH+4)], 1'b0, hcmd_sq_rd_data[(P_SLOT_TAG_WIDTH+4)-1:4], 1'b0, hcmd_sq_rd_data[3:0]};
+	endcase
+end
+
+always @ (*)
+begin
+	r_auto_reg_rdata = 32'h0;
+	case(w_reg_rd_addr[7:2]) // synthesis parallel_case full_case
+		6'h00: r_auto_reg_rdata = 32'ha710_f001;
+		6'h01: r_auto_reg_rdata = r_auto_ctrl;
+		6'h02: r_auto_reg_rdata = auto_status;
+		6'h03: r_auto_reg_rdata = auto_error;
+		6'h04: r_auto_reg_rdata = r_auto_ddr_base[31:0];
+		6'h05: r_auto_reg_rdata = {{(64-C_M_AXI_ADDR_WIDTH){1'b0}}, r_auto_ddr_base[C_M_AXI_ADDR_WIDTH-1:32]};
+		6'h06: r_auto_reg_rdata = r_auto_ddr_limit[31:0];
+		6'h07: r_auto_reg_rdata = {{(64-C_M_AXI_ADDR_WIDTH){1'b0}}, r_auto_ddr_limit[C_M_AXI_ADDR_WIDTH-1:32]};
+		6'h08: r_auto_reg_rdata = {23'b0, r_auto_io_enable_mask};
+		6'h09: r_auto_reg_rdata = r_auto_pf0_msi_ctrl;
+		6'h0A: r_auto_reg_rdata = r_auto_cq_mode;
+		6'h0C: r_auto_reg_rdata = auto_cmd_count;
+		6'h0D: r_auto_reg_rdata = auto_dma_submit_count;
+		6'h0E: r_auto_reg_rdata = {16'h0, dma_tx_done_cnt, dma_rx_done_cnt};
+		6'h0F: r_auto_reg_rdata = cq_dbg_write_count;
+		6'h10: r_auto_reg_rdata = cq_dbg_last_dw3;
+		6'h11: r_auto_reg_rdata = auto_unsupported_count;
+		6'h12: r_auto_reg_rdata = auto_last_qid_slot;
+		6'h13: r_auto_reg_rdata = auto_last_opcode;
+		6'h14: r_auto_reg_rdata = auto_last_error_info;
+		6'h15: r_auto_reg_rdata = cq_dbg_last_dw2;
+		6'h16: r_auto_reg_rdata = {r_auto_cq_irq_retry_count[15:0], 12'b0, r_auto_cq_irq_retry_last_cqid};
 	endcase
 end
 

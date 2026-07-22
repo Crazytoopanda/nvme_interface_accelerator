@@ -57,46 +57,46 @@ http://www.hanyang.ac.kr/
 	parameter	C_PCIE_ADDR_WIDTH			= 48 //modified
 )
 (
- 	input									pcie_user_clk,
- 	input									pcie_user_rst_n,
+	input									pcie_user_clk,
+	input									pcie_user_rst_n,
 
  	output									hcmd_cq_rd_en,
- 	input	[(P_SLOT_TAG_WIDTH+28)-1:0]		hcmd_cq_rd_data, //slot_modified
- 	input									hcmd_cq_empty_n,
+	input	[(P_SLOT_TAG_WIDTH+28)-1:0]		hcmd_cq_rd_data, //slot_modified
+	input									hcmd_cq_empty_n,
 
  	output	[P_SLOT_TAG_WIDTH-1:0]			hcmd_cid_rd_addr, //slot_modified
- 	input	[19:0]							hcmd_cid_rd_data,
+	input	[19:0]							hcmd_cid_rd_data,
 
- 	input	[3:0]							io_sq1_cq_vec,
- 	input	[3:0]							io_sq2_cq_vec,
- 	input	[3:0]							io_sq3_cq_vec,
- 	input	[3:0]							io_sq4_cq_vec,
- 	input	[3:0]							io_sq5_cq_vec,
- 	input	[3:0]							io_sq6_cq_vec,
- 	input	[3:0]							io_sq7_cq_vec,
- 	input	[3:0]							io_sq8_cq_vec,
+	input	[3:0]							io_sq1_cq_vec,
+	input	[3:0]							io_sq2_cq_vec,
+	input	[3:0]							io_sq3_cq_vec,
+	input	[3:0]							io_sq4_cq_vec,
+	input	[3:0]							io_sq5_cq_vec,
+	input	[3:0]							io_sq6_cq_vec,
+	input	[3:0]							io_sq7_cq_vec,
+	input	[3:0]							io_sq8_cq_vec,
 
- 	input	[8:0]							sq_valid,
- 	input	[8:0]							cq_rst_n,
- 	input	[8:0]							cq_valid,
- 	input	[7:0]							admin_cq_size,
- 	input	[7:0]							io_cq1_size,
- 	input	[7:0]							io_cq2_size,
- 	input	[7:0]							io_cq3_size,
- 	input	[7:0]							io_cq4_size,
- 	input	[7:0]							io_cq5_size,
- 	input	[7:0]							io_cq6_size,
- 	input	[7:0]							io_cq7_size,
- 	input	[7:0]							io_cq8_size,
- 	input	[C_PCIE_ADDR_WIDTH-1:2]			admin_cq_bs_addr,
- 	input	[C_PCIE_ADDR_WIDTH-1:2]			io_cq1_bs_addr,
- 	input	[C_PCIE_ADDR_WIDTH-1:2]			io_cq2_bs_addr,
- 	input	[C_PCIE_ADDR_WIDTH-1:2]			io_cq3_bs_addr,
- 	input	[C_PCIE_ADDR_WIDTH-1:2]			io_cq4_bs_addr,
- 	input	[C_PCIE_ADDR_WIDTH-1:2]			io_cq5_bs_addr,
- 	input	[C_PCIE_ADDR_WIDTH-1:2]			io_cq6_bs_addr,
- 	input	[C_PCIE_ADDR_WIDTH-1:2]			io_cq7_bs_addr,
- 	input	[C_PCIE_ADDR_WIDTH-1:2]			io_cq8_bs_addr,
+	input	[8:0]							sq_valid,
+	input	[8:0]							cq_rst_n,
+	input	[8:0]							cq_valid,
+	input	[7:0]							admin_cq_size,
+	input	[7:0]							io_cq1_size,
+	input	[7:0]							io_cq2_size,
+	input	[7:0]							io_cq3_size,
+	input	[7:0]							io_cq4_size,
+	input	[7:0]							io_cq5_size,
+	input	[7:0]							io_cq6_size,
+	input	[7:0]							io_cq7_size,
+	input	[7:0]							io_cq8_size,
+	input	[C_PCIE_ADDR_WIDTH-1:2]			admin_cq_bs_addr,
+	input	[C_PCIE_ADDR_WIDTH-1:2]			io_cq1_bs_addr,
+	input	[C_PCIE_ADDR_WIDTH-1:2]			io_cq2_bs_addr,
+	input	[C_PCIE_ADDR_WIDTH-1:2]			io_cq3_bs_addr,
+	input	[C_PCIE_ADDR_WIDTH-1:2]			io_cq4_bs_addr,
+	input	[C_PCIE_ADDR_WIDTH-1:2]			io_cq5_bs_addr,
+	input	[C_PCIE_ADDR_WIDTH-1:2]			io_cq6_bs_addr,
+	input	[C_PCIE_ADDR_WIDTH-1:2]			io_cq7_bs_addr,
+	input	[C_PCIE_ADDR_WIDTH-1:2]			io_cq8_bs_addr,
 
  	output	[7:0]							admin_cq_tail_ptr,
  	output	[7:0]							io_cq1_tail_ptr,
@@ -108,15 +108,15 @@ http://www.hanyang.ac.kr/
  	output	[7:0]							io_cq7_tail_ptr,
  	output	[7:0]							io_cq8_tail_ptr,
 
- 	input	[7:0]							admin_sq_head_ptr,
- 	input	[7:0]							io_sq1_head_ptr,
- 	input	[7:0]							io_sq2_head_ptr,
- 	input	[7:0]							io_sq3_head_ptr,
- 	input	[7:0]							io_sq4_head_ptr,
- 	input	[7:0]							io_sq5_head_ptr,
- 	input	[7:0]							io_sq6_head_ptr,
- 	input	[7:0]							io_sq7_head_ptr,
- 	input	[7:0]							io_sq8_head_ptr,
+	input	[7:0]							admin_sq_head_ptr,
+	input	[7:0]							io_sq1_head_ptr,
+	input	[7:0]							io_sq2_head_ptr,
+	input	[7:0]							io_sq3_head_ptr,
+	input	[7:0]							io_sq4_head_ptr,
+	input	[7:0]							io_sq5_head_ptr,
+	input	[7:0]							io_sq6_head_ptr,
+	input	[7:0]							io_sq7_head_ptr,
+	input	[7:0]							io_sq8_head_ptr,
 
  	output									hcmd_slot_free_en,
  	output	[P_SLOT_TAG_WIDTH-1:0]			hcmd_slot_invalid_tag, //slot_modified
@@ -125,30 +125,35 @@ http://www.hanyang.ac.kr/
  	output	[7:0]							tx_cq_mwr_tag,
  	output	[12:2]							tx_cq_mwr_len,
  	output	[C_PCIE_ADDR_WIDTH-1:2]			tx_cq_mwr_addr,
- 	input									tx_cq_mwr_req_ack,
- 	input									tx_cq_mwr_rd_en,
+	input									tx_cq_mwr_req_ack,
+	input									tx_cq_mwr_rd_en,
  	output	[C_PCIE_DATA_WIDTH-1:0]			tx_cq_mwr_rd_data,
- 	input									tx_cq_mwr_data_last
+	input									tx_cq_mwr_data_last,
+
+	output	[31:0]								cq_dbg_write_count,
+	output	[31:0]								cq_dbg_last_dw2,
+	output	[31:0]								cq_dbg_last_dw3
 );
 
 localparam	LP_CPL_PCIE_TAG_PREFIX			= 8'b00000000;
 localparam	LP_CPL_SIZE						= 11'h04;
 
 
-localparam	S_IDLE							= 11'b00000000001;
-localparam	S_CPL_STATUS0					= 11'b00000000010;
-localparam	S_CPL_STATUS1					= 11'b00000000100;
-localparam	S_CPL_STATUS2					= 11'b00000001000;
-localparam	S_CPL_STATUS3					= 11'b00000010000;
-localparam	S_HEAD_PTR						= 11'b00000100000;
-localparam	S_PCIE_ADDR						= 11'b00001000000;
-localparam	S_PCIE_MWR_REQ					= 11'b00010000000;
-localparam	S_PCIE_MWR_DATA_LAST			= 11'b00100000000;
-localparam	S_PCIE_MWR_DONE					= 11'b01000000000;
-localparam	S_PCIE_SLOT_RELEASE				= 11'b10000000000;
+localparam	S_IDLE							= 12'b000000000001;
+localparam	S_CPL_STATUS0					= 12'b000000000010;
+localparam	S_CPL_STATUS1					= 12'b000000000100;
+localparam	S_CPL_STATUS2					= 12'b000000001000;
+localparam	S_CPL_STATUS2_WAIT			= 12'b000000010000;
+localparam	S_CPL_STATUS3					= 12'b000000100000;
+localparam	S_HEAD_PTR						= 12'b000001000000;
+localparam	S_PCIE_ADDR						= 12'b000010000000;
+localparam	S_PCIE_MWR_REQ					= 12'b000100000000;
+localparam	S_PCIE_MWR_DATA_LAST			= 12'b001000000000;
+localparam	S_PCIE_MWR_DONE					= 12'b010000000000;
+localparam	S_PCIE_SLOT_RELEASE				= 12'b100000000000;
 
-     reg		[10:0]								cur_state;
-     reg		[10:0]								next_state;
+     reg		[11:0]								cur_state;
+     reg		[11:0]								next_state;
     
      reg											r_sq_is_valid;
      reg											r_cq_is_valid;
@@ -184,6 +189,9 @@ localparam	S_PCIE_SLOT_RELEASE				= 11'b10000000000;
     
      reg											r_tx_cq_mwr_req;
      reg		[C_PCIE_ADDR_WIDTH-1:2]				r_tx_cq_mwr_addr;
+     reg		[31:0]								r_cq_dbg_write_count;
+     reg		[31:0]								r_cq_dbg_last_dw2;
+     reg		[31:0]								r_cq_dbg_last_dw3;
      wire	[31:0]								w_cpl_dw0;
      wire	[31:0]								w_cpl_dw1;
      wire	[31:0]								w_cpl_dw2;
@@ -216,6 +224,23 @@ assign tx_cq_mwr_tag = LP_CPL_PCIE_TAG_PREFIX;
 assign tx_cq_mwr_len = LP_CPL_SIZE;
 assign tx_cq_mwr_addr = r_tx_cq_mwr_addr;
 assign tx_cq_mwr_rd_data = {384'b0, w_cpl_dw3, w_cpl_dw2, w_cpl_dw1, w_cpl_dw0};
+assign cq_dbg_write_count = r_cq_dbg_write_count;
+assign cq_dbg_last_dw2 = r_cq_dbg_last_dw2;
+assign cq_dbg_last_dw3 = r_cq_dbg_last_dw3;
+
+always @ (posedge pcie_user_clk or negedge pcie_user_rst_n)
+begin
+	if(pcie_user_rst_n == 0) begin
+		r_cq_dbg_write_count <= 0;
+		r_cq_dbg_last_dw2 <= 0;
+		r_cq_dbg_last_dw3 <= 0;
+	end
+	else if(cur_state == S_PCIE_MWR_DONE) begin
+		r_cq_dbg_write_count <= r_cq_dbg_write_count + 1;
+		r_cq_dbg_last_dw2 <= w_cpl_dw2;
+		r_cq_dbg_last_dw3 <= w_cpl_dw3;
+	end
+end
 
 always @ (posedge pcie_user_clk or negedge pcie_user_rst_n)
 begin
@@ -246,6 +271,9 @@ begin
 				next_state <= S_CPL_STATUS3;
 		end
 		S_CPL_STATUS2: begin
+			next_state <= S_CPL_STATUS2_WAIT;
+		end
+		S_CPL_STATUS2_WAIT: begin
 			next_state <= S_CPL_STATUS3;
 		end
 		S_CPL_STATUS3: begin
@@ -254,17 +282,24 @@ begin
 		S_HEAD_PTR: begin
 			if(r_sq_is_valid == 1)
 				next_state <= S_PCIE_ADDR;
+			else if(r_cql_type[0] == 1)
+				next_state <= S_PCIE_SLOT_RELEASE;
 			else
 				next_state <= S_IDLE;
 		end
 		S_PCIE_ADDR: begin
 			if(r_cq_is_valid == 1)
 				next_state <= S_PCIE_MWR_REQ;
+			else if(r_cql_type[0] == 1)
+				next_state <= S_PCIE_SLOT_RELEASE;
 			else
 				next_state <= S_IDLE;
 		end
 		S_PCIE_MWR_REQ: begin
-			next_state <= S_PCIE_MWR_DATA_LAST;
+			if(tx_cq_mwr_req_ack == 1)
+				next_state <= S_PCIE_MWR_DATA_LAST;
+			else
+				next_state <= S_PCIE_MWR_REQ;
 		end
 		S_PCIE_MWR_DATA_LAST: begin
 			if(tx_cq_mwr_data_last == 1)
@@ -308,6 +343,9 @@ begin
 			r_cpl_specific[31:0] <= hcmd_cq_rd_data[33:2];
 		end
 		S_CPL_STATUS2: begin
+
+		end
+		S_CPL_STATUS2_WAIT: begin
 			r_cpl_cid <= hcmd_cid_rd_data[15:0];
 			r_cpl_sq_qid <= hcmd_cid_rd_data[19:16];
 		end
@@ -357,6 +395,11 @@ begin
 					r_sq_is_valid <= sq_valid[8];
 					r_sq_cq_vec <= io_sq8_cq_vec;
 					r_sq_head_ptr <= io_sq8_head_ptr;
+				end
+				default: begin
+					r_sq_is_valid <= 1'b0;
+					r_sq_cq_vec <= 4'h0;
+					r_sq_head_ptr <= 8'h0;
 				end
 			endcase
 		end
@@ -432,6 +475,13 @@ begin
 					r_sq_head_ptr <= io_sq8_head_ptr;
 					r_cq_valid_entry <= 9'b100000000;
 				end
+				default: begin
+					r_cq_is_valid <= 1'b0;
+					r_tx_cq_mwr_addr <= 0;
+					r_cq_tail_ptr <= 8'h0;
+					r_phase_tag <= 1'b0;
+					r_cq_valid_entry <= 9'b000000000;
+				end
 			endcase
 		end
 		S_PCIE_ADDR: begin
@@ -480,6 +530,12 @@ begin
 			r_hcmd_slot_free_en <= 0;
 		end
 		S_CPL_STATUS2: begin
+			r_hcmd_cq_rd_en <= 0;
+			r_tx_cq_mwr_req <= 0;
+			r_cq_update_entry <= 0;
+			r_hcmd_slot_free_en <= 0;
+		end
+		S_CPL_STATUS2_WAIT: begin
 			r_hcmd_cq_rd_en <= 0;
 			r_tx_cq_mwr_req <= 0;
 			r_cq_update_entry <= 0;

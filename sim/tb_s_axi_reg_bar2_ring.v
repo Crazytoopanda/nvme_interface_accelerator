@@ -9,6 +9,24 @@ module tb_s_axi_reg_bar2_ring;
     localparam integer DMA_CMD_WIDTH = C_M_AXI_ADDR_WIDTH + 24;
 
     localparam [17:0] BAR2_NVME_STATUS     = 18'h00200;
+    localparam [17:0] BAR2_AUTO_BASE       = 18'h00400;
+    localparam [17:0] BAR2_AUTO_MAGIC      = BAR2_AUTO_BASE + 18'h000;
+    localparam [17:0] BAR2_AUTO_CTRL       = BAR2_AUTO_BASE + 18'h004;
+    localparam [17:0] BAR2_AUTO_STATUS     = BAR2_AUTO_BASE + 18'h008;
+    localparam [17:0] BAR2_AUTO_ERROR      = BAR2_AUTO_BASE + 18'h00c;
+    localparam [17:0] BAR2_AUTO_DDR_BASE_L = BAR2_AUTO_BASE + 18'h010;
+    localparam [17:0] BAR2_AUTO_DDR_BASE_H = BAR2_AUTO_BASE + 18'h014;
+    localparam [17:0] BAR2_AUTO_DDR_LIM_L  = BAR2_AUTO_BASE + 18'h018;
+    localparam [17:0] BAR2_AUTO_DDR_LIM_H  = BAR2_AUTO_BASE + 18'h01c;
+    localparam [17:0] BAR2_AUTO_IO_MASK    = BAR2_AUTO_BASE + 18'h020;
+    localparam [17:0] BAR2_AUTO_PF0_MSI    = BAR2_AUTO_BASE + 18'h024;
+    localparam [17:0] BAR2_AUTO_CQ_MODE    = BAR2_AUTO_BASE + 18'h028;
+    localparam [17:0] BAR2_AUTO_CMD_CNT    = BAR2_AUTO_BASE + 18'h030;
+    localparam [17:0] BAR2_AUTO_DMA_CNT    = BAR2_AUTO_BASE + 18'h034;
+    localparam [17:0] BAR2_AUTO_UNSUP_CNT  = BAR2_AUTO_BASE + 18'h044;
+    localparam [17:0] BAR2_AUTO_LAST_QS    = BAR2_AUTO_BASE + 18'h048;
+    localparam [17:0] BAR2_AUTO_LAST_OP    = BAR2_AUTO_BASE + 18'h04c;
+    localparam [17:0] BAR2_AUTO_LAST_ERR   = BAR2_AUTO_BASE + 18'h050;
     localparam [17:0] BAR2_RING_DESC_BASE  = 18'h20000;
     localparam [17:0] BAR2_RING_CTRL_BASE  = 18'h22000;
     localparam [17:0] BAR2_RING_MAGIC      = BAR2_RING_CTRL_BASE + 18'h000;
@@ -62,7 +80,36 @@ module tb_s_axi_reg_bar2_ring;
     reg [7:0] dma_rx_done_cnt = 8'd0;
     reg [7:0] dma_tx_done_cnt = 8'd0;
 
+    wire auto_enable;
+    wire auto_reset;
+    wire auto_io_read_enable;
+    wire auto_io_write_enable;
+    wire auto_cq_enable;
+    wire auto_msi_enable;
+    wire [31:0] auto_cq_mode;
+    wire [C_M_AXI_ADDR_WIDTH-1:0] auto_ddr_base;
+    wire [C_M_AXI_ADDR_WIDTH-1:0] auto_ddr_limit;
+    wire [8:0] auto_io_enable_mask;
+    wire [31:0] auto_error_clear;
+    reg [31:0] auto_status = 32'h0012_0304;
+    reg [31:0] auto_error = 32'h0000_0028;
+    reg [31:0] auto_cmd_count = 32'h0000_0011;
+    reg [31:0] auto_dma_submit_count = 32'h0000_0022;
+    reg [31:0] auto_unsupported_count = 32'h0000_0033;
+    reg [31:0] auto_last_qid_slot = 32'h0004_0552;
+    reg [31:0] auto_last_opcode = 32'h0000_0002;
+    reg [31:0] auto_last_error_info = 32'h0204_0052;
+    integer saw_auto_reset = 0;
+    reg [31:0] captured_auto_error_clear = 32'h0;
+
     always #5 clk = ~clk;
+
+    always @(posedge clk) begin
+        if (auto_reset)
+            saw_auto_reset <= 1;
+        if (auto_error_clear != 32'h0)
+            captured_auto_error_clear <= auto_error_clear;
+    end
 
     s_axi_reg #(
         .P_SLOT_TAG_WIDTH(P_SLOT_TAG_WIDTH),
@@ -152,6 +199,25 @@ module tb_s_axi_reg_bar2_ring;
         .cfg_interrupt_mmenable(3'd0),
         .cfg_interrupt_msienable(1'b0),
         .cfg_interrupt_msixenable(1'b0),
+        .auto_enable(auto_enable),
+        .auto_reset(auto_reset),
+        .auto_io_read_enable(auto_io_read_enable),
+        .auto_io_write_enable(auto_io_write_enable),
+        .auto_cq_enable(auto_cq_enable),
+        .auto_msi_enable(auto_msi_enable),
+        .auto_cq_mode(auto_cq_mode),
+        .auto_ddr_base(auto_ddr_base),
+        .auto_ddr_limit(auto_ddr_limit),
+        .auto_io_enable_mask(auto_io_enable_mask),
+        .auto_error_clear(auto_error_clear),
+        .auto_status(auto_status),
+        .auto_error(auto_error),
+        .auto_cmd_count(auto_cmd_count),
+        .auto_dma_submit_count(auto_dma_submit_count),
+        .auto_unsupported_count(auto_unsupported_count),
+        .auto_last_qid_slot(auto_last_qid_slot),
+        .auto_last_opcode(auto_last_opcode),
+        .auto_last_error_info(auto_last_error_info),
         .reset_count()
     );
 
@@ -318,6 +384,50 @@ module tb_s_axi_reg_bar2_ring;
         bar2_read(BAR2_NVME_STATUS, rd);
         expect32("BAR2 NVMe status readback", rd, 32'h0000_0010);
 
+        bar2_read(BAR2_AUTO_MAGIC, rd);
+        expect32("auto magic", rd, 32'ha710_f001);
+        bar2_write(BAR2_AUTO_DDR_BASE_L, 32'h0020_0000);
+        bar2_write(BAR2_AUTO_DDR_BASE_H, 32'h0000_0050);
+        bar2_write(BAR2_AUTO_DDR_LIM_L, 32'h0fff_ffff);
+        bar2_write(BAR2_AUTO_DDR_LIM_H, 32'h0000_0050);
+        bar2_write(BAR2_AUTO_IO_MASK, 32'h0000_01fe);
+        bar2_write(BAR2_AUTO_PF0_MSI, 32'h0000_0101);
+        bar2_write(BAR2_AUTO_CQ_MODE, 32'h0000_0000);
+        bar2_write(BAR2_AUTO_CTRL, 32'h0000_0f03);
+        repeat (2) @(posedge clk);
+        if (saw_auto_reset == 0)
+            fail("auto reset pulse was not observed");
+        if (auto_enable !== 1'b1 || auto_io_read_enable !== 1'b1 || auto_io_write_enable !== 1'b1 ||
+            auto_cq_enable !== 1'b1 || auto_msi_enable !== 1'b1)
+            fail("auto ctrl outputs were not decoded");
+        if (auto_ddr_base !== 64'h0000_0050_0020_0000)
+            fail("auto DDR base output mismatch");
+        if (auto_ddr_limit !== 64'h0000_0050_0fff_ffff)
+            fail("auto DDR limit output mismatch");
+        if (auto_io_enable_mask !== 9'h1fe)
+            fail("auto IO mask output mismatch");
+        bar2_read(BAR2_AUTO_CTRL, rd);
+        expect32("auto ctrl readback clears reset bit", rd, 32'h0000_0f01);
+        bar2_read(BAR2_AUTO_STATUS, rd);
+        expect32("auto status mirror", rd, auto_status);
+        bar2_read(BAR2_AUTO_ERROR, rd);
+        expect32("auto error mirror", rd, auto_error);
+        bar2_read(BAR2_AUTO_CMD_CNT, rd);
+        expect32("auto cmd count mirror", rd, auto_cmd_count);
+        bar2_read(BAR2_AUTO_DMA_CNT, rd);
+        expect32("auto DMA count mirror", rd, auto_dma_submit_count);
+        bar2_read(BAR2_AUTO_UNSUP_CNT, rd);
+        expect32("auto unsupported count mirror", rd, auto_unsupported_count);
+        bar2_read(BAR2_AUTO_LAST_QS, rd);
+        expect32("auto last qid/slot mirror", rd, auto_last_qid_slot);
+        bar2_read(BAR2_AUTO_LAST_OP, rd);
+        expect32("auto last opcode mirror", rd, auto_last_opcode);
+        bar2_read(BAR2_AUTO_LAST_ERR, rd);
+        expect32("auto last error mirror", rd, auto_last_error_info);
+        bar2_write(BAR2_AUTO_ERROR, 32'h0000_0028);
+        repeat (2) @(posedge clk);
+        expect32("auto error clear pulse", captured_auto_error_clear, 32'h0000_0028);
+
         bar2_write(BAR2_RING_PF1_CTRL, 32'h0000_0101);
         bar2_write(BAR2_RING_PF1_THRESH, 32'h0000_0001);
         bar2_write(BAR2_RING_PF0_CTRL, 32'h0000_0101);
@@ -374,7 +484,7 @@ module tb_s_axi_reg_bar2_ring;
         bar2_read(BAR2_RING_PF0_COUNT, rd);
         expect32("PF0 MSI count", rd, 32'h0000_0001);
 
-        $display("PASS: BAR2 direct register, DMA ring, PF1 auto MSI, and PF0 manual MSI behavior");
+        $display("PASS: BAR2 direct register, auto register bank, DMA ring, PF1 auto MSI, and PF0 manual MSI behavior");
         $finish;
     end
 endmodule
