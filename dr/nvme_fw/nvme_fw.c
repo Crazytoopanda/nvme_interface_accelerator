@@ -1166,7 +1166,7 @@ static int fw_handle_create_io_sq(struct nvme_fw_dev *fw,
 {
 	u32 qid = cmd->dword[10] & 0xffffu;
 	u32 qsize = (cmd->dword[10] >> 16) & 0xffffu;
-	u32 cqid = cmd->dword[11] & 0xffffu;
+	u32 cqid = (cmd->dword[11] >> 16) & 0xffffu;
 	u64 prp1 = fw_cmd_prp1(cmd);
 
 	fw_admin_success(specific, status);

@@ -1018,6 +1018,7 @@ static void auto_hw_configure(void)
 static void auto_fw_clear_for_rearm(void)
 {
 	auto_hw_reset();
+	auto_hw_configure();
 	auto_fw_set_status_fields(0U, 0U);
 	auto_fw_set_admin_queue(0U, 0U, 0U);
 	auto_fw_clear_io_queues();

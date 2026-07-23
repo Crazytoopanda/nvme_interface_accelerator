@@ -17,8 +17,8 @@
 #define NVME_ON_HOST_BAR0_MIN_SIZE     0x2000u
 #define NVME_ON_HOST_MAX_HW_SECTORS    8u /* one 4 KiB logical block */
 #define NVME_ON_HOST_MAX_SEGMENTS      1u
-#define NVME_ON_HOST_MAX_IO_QUEUES     1u
-#define NVME_ON_HOST_IO_QUEUE_DEPTH    2u
+#define NVME_ON_HOST_MAX_IO_QUEUES     8u
+#define NVME_ON_HOST_IO_QUEUE_DEPTH    256u
 
 #ifndef NVME_ON_HOST_DEBUG
 #define NVME_ON_HOST_DEBUG 0

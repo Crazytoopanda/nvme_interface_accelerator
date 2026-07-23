@@ -30,6 +30,8 @@ integer pcie_cycles = 0;
 integer submit_cycle = 0;
 integer release_cycle = 0;
 integer first_release_latency = 0;
+integer write_submit_cycle = 0;
+integer write_release_latency = 0;
 reg [63:0] first_due;
 reg [63:0] parallel_due0;
 reg [63:0] parallel_due1;
@@ -144,8 +146,21 @@ initial begin
 		       parallel_due1 - parallel_due0);
 	wait(release_count == 4);
 
-	$display("PASS: Samsung 970 PRO 4K read=%0d cycles, same-LUN spacing=8248 cycles, different-channel delta=%0d cycles, bypass and CQ decoupling OK",
-		 first_release_latency, parallel_due1 - parallel_due0);
+	/* A 4 KiB write waits for frontend, channel transfer, and NAND program. */
+	send_meta(10'd21, 64'd12, 1'b1);
+	write_submit_cycle = pcie_cycles;
+	send_done(10'd21);
+	wait(release_count == 5);
+	write_release_latency = release_cycle - write_submit_cycle;
+	if(out_data0[SLOT_W+1:2] != 10'd21)
+		$fatal(1, "wrong released write slot");
+	if(write_release_latency < 47200 || write_release_latency > 47700)
+		$fatal(1, "Samsung 4K program latency mismatch: %0d cycles",
+		       write_release_latency);
+
+	$display("PASS: Samsung 970 PRO 4K read=%0d cycles, write=%0d cycles, same-LUN spacing=8248 cycles, different-channel delta=%0d cycles, bypass and CQ decoupling OK",
+		 first_release_latency, write_release_latency,
+		 parallel_due1 - parallel_due0);
 	$finish;
 end
 
