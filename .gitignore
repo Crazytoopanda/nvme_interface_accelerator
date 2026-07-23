@@ -8,6 +8,8 @@
 **/vivado*
 **/xil_ip_pack_*
 **/*.vcd 
+**/sim/**/*.rpt
+**/sim/**/*.dcp
 
 **/nvme_plddr64g_*
 !**/nvme_plddr64g_*.tcl

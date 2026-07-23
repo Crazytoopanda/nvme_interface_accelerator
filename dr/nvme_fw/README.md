@@ -192,7 +192,7 @@ kernel firmware worker or MicroBlaze `auto_fw` is active.
 
 ```sh
 sudo dr/nvme_fw/build/nvme_fw_ctl ready 0
-# in another shell: sudo insmod dr/nvme_on_host/build/nvme_on_host.ko
+# in another shell: sudo insmod dr/xilinx_nvme/build/xilinx_nvme_pci.ko
 sudo dr/nvme_fw/build/nvme_fw_ctl ready 1
 ```
 
@@ -216,7 +216,7 @@ explicitly pass `--run`:
 sudo insmod dr/nvme_fw/build/nvme_fw.ko run_firmware=0
 sudo dr/nvme_fw/build/nvme_fw_daemon --run
 # another shell
-sudo insmod dr/nvme_on_host/build/nvme_on_host.ko
+sudo insmod dr/xilinx_nvme/build/xilinx_nvme_pci.ko
 ```
 
 Implemented daemon flow:
@@ -246,7 +246,7 @@ With the FPGA bitstream loaded and MicroBlaze stopped:
 sudo insmod dr/nvme_fw/build/nvme_fw.ko
 sudo dr/nvme_fw/build/nvme_fw_ctl info
 sudo dr/nvme_fw/build/nvme_fw_ctl auto-status
-sudo insmod dr/nvme_on_host/build/nvme_on_host.ko
+sudo insmod dr/xilinx_nvme/build/xilinx_nvme_pci.ko
 ```
 
 Expected ownership:
@@ -255,7 +255,7 @@ Expected ownership:
   automation configuration, BAR2 diagnostics.
 - Hardware automation: normal Read/Write/Flush execution, data DMA, CQ writes,
   SSD latency gating, and PF0 MSI.
-- PF0 `nvme_on_host.ko`: Linux NVMe host driver.
+- PF0 `xilinx_nvme_pci.ko`: Linux NVMe host driver.
 - MicroBlaze `auto_fw`: stopped.
 
 For MicroBlaze-owned firmware, load PF1 with `run_firmware=0` instead.

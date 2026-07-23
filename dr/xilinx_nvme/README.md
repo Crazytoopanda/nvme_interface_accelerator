@@ -8,6 +8,11 @@ vendor:device = 10ee:903f
 driver name   = xilinx_nvme
 ```
 
+This driver binds PCI function 0 only and requests BAR0 only. Queue counts,
+queue depth, request sizing, CID generation, module parameters, and the rest of
+the Linux 6.8 NVMe PCI behavior remain unchanged from the local clone. BAR2 is
+left unclaimed for the separate firmware/control path.
+
 The normal in-tree `nvme` driver is not modified and can keep owning real NVMe
 devices.
 

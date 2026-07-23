@@ -45,6 +45,9 @@
 #define NVME_MAX_SEGS	128
 #define NVME_MAX_NR_ALLOCATIONS	5
 
+#define XILINX_NVME_PCI_FUNCTION 0
+#define XILINX_NVME_BAR0 0
+
 static int use_threaded_interrupts;
 module_param(use_threaded_interrupts, int, 0444);
 
@@ -2565,7 +2568,7 @@ static void nvme_dev_unmap(struct nvme_dev *dev)
 {
 	if (dev->bar)
 		iounmap(dev->bar);
-	pci_release_mem_regions(to_pci_dev(dev->dev));
+	pci_release_region(to_pci_dev(dev->dev), XILINX_NVME_BAR0);
 }
 
 static bool nvme_pci_ctrl_is_dead(struct nvme_dev *dev)
@@ -2863,7 +2866,7 @@ static int nvme_dev_map(struct nvme_dev *dev)
 {
 	struct pci_dev *pdev = to_pci_dev(dev->dev);
 
-	if (pci_request_mem_regions(pdev, "nvme"))
+	if (pci_request_region(pdev, XILINX_NVME_BAR0, "xilinx_nvme"))
 		return -ENODEV;
 
 	if (nvme_remap_bar(dev, NVME_REG_DBS + 4096))
@@ -2871,7 +2874,7 @@ static int nvme_dev_map(struct nvme_dev *dev)
 
 	return 0;
   release:
-	pci_release_mem_regions(pdev);
+	pci_release_region(pdev, XILINX_NVME_BAR0);
 	return -ENODEV;
 }
 
@@ -3005,6 +3008,9 @@ static int nvme_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 {
 	struct nvme_dev *dev;
 	int result = -ENOMEM;
+
+	if (PCI_FUNC(pdev->devfn) != XILINX_NVME_PCI_FUNCTION)
+		return -ENODEV;
 
 	dev = nvme_pci_alloc_dev(pdev, id);
 	if (IS_ERR(dev))
