@@ -83,6 +83,16 @@
 #define AUTO_REG_CQ_IRQ_RETRY              (AUTO_REG_BASE + 0x58)
 #define AUTO_REG_SW_DOORBELL               (AUTO_REG_BASE + 0x5c)
 #define AUTO_REG_CQ_IRQ_RETRY_CYCLES       (AUTO_REG_BASE + 0x60)
+#define AUTO_REG_SSD_MODEL_CTRL             (AUTO_REG_BASE + 0x64)
+#define AUTO_REG_SSD_READ_LSB_CYCLES        (AUTO_REG_BASE + 0x68)
+#define AUTO_REG_SSD_READ_MSB_CYCLES        (AUTO_REG_BASE + 0x6c)
+#define AUTO_REG_SSD_PROGRAM_CYCLES         (AUTO_REG_BASE + 0x70)
+#define AUTO_REG_SSD_FW_READ_CYCLES         (AUTO_REG_BASE + 0x74)
+#define AUTO_REG_SSD_FW_WRITE_CYCLES        (AUTO_REG_BASE + 0x78)
+#define AUTO_REG_SSD_CH_XFER_4K_CYCLES      (AUTO_REG_BASE + 0x7c)
+#define AUTO_REG_SSD_MODEL_STATUS           (AUTO_REG_BASE + 0x80)
+#define AUTO_REG_SSD_MODEL_SUBMIT_COUNT     (AUTO_REG_BASE + 0x84)
+#define AUTO_REG_SSD_MODEL_RELEASE_COUNT    (AUTO_REG_BASE + 0x88)
 
 #define AUTO_MAGIC_VALUE                   0xA710F001U
 
@@ -92,6 +102,9 @@
 #define AUTO_CTRL_IO_WRITE_ENABLE          (1U << 9)
 #define AUTO_CTRL_AUTO_CQ_ENABLE           (1U << 10)
 #define AUTO_CTRL_AUTO_MSI_ENABLE          (1U << 11)
+
+#define AUTO_SSD_MODEL_ENABLE               (1U << 0)
+#define AUTO_SSD_MODEL_RESET                (1U << 1)
 
 #define AUTO_STATUS_ENABLED                (1U << 0)
 #define AUTO_STATUS_IDLE                   (1U << 1)

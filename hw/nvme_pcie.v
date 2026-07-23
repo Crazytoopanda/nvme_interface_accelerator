@@ -184,6 +184,22 @@ module nvme_pcie # (
 	input	[C_M_AXI_ADDR_WIDTH+23:0]			dma_cmd_wr_data1, //modified
 	output									dma_cmd_wr_rdy_n,
 
+	input									model_cmd_wr_en,
+	input	[63:0]						model_cmd_wr_data0,
+	input	[63:0]						model_cmd_wr_data1,
+	output									model_cmd_wr_rdy_n,
+	input									ssd_model_enable,
+	input									ssd_model_reset,
+	input	[31:0]						ssd_read_lsb_cycles,
+	input	[31:0]						ssd_read_msb_cycles,
+	input	[31:0]						ssd_program_cycles,
+	input	[31:0]						ssd_fw_read_cycles,
+	input	[31:0]						ssd_fw_write_cycles,
+	input	[31:0]						ssd_ch_xfer_4k_cycles,
+	output	[31:0]						ssd_model_status,
+	output	[31:0]						ssd_model_submit_count,
+	output	[31:0]						ssd_model_release_count,
+
 	output	[7:0]							dma_rx_direct_done_cnt,
 	output	[7:0]							dma_tx_direct_done_cnt,
 	output	[7:0]							dma_rx_done_cnt,
@@ -329,6 +345,10 @@ wire										w_hcmd_cq_wr0_en;
 wire	[(P_SLOT_TAG_WIDTH+28)-1:0]			w_hcmd_cq_wr0_data0; //slot_modified
 wire	[(P_SLOT_TAG_WIDTH+28)-1:0]			w_hcmd_cq_wr0_data1; //slot_modified
 wire										w_hcmd_cq_wr0_rdy_n;
+wire									w_dma_hcmd_cq_wr0_en;
+wire	[(P_SLOT_TAG_WIDTH+28)-1:0]		w_dma_hcmd_cq_wr0_data0;
+wire	[(P_SLOT_TAG_WIDTH+28)-1:0]		w_dma_hcmd_cq_wr0_data1;
+wire									w_dma_hcmd_cq_wr0_rdy_n;
 
 wire										w_mreq_fifo_wr_en;
 wire	[C_PCIE_DATA_WIDTH-1:0]				w_mreq_fifo_wr_data;
@@ -634,6 +654,43 @@ pcie_bar2_stream_inst0(
 	.bar2_reg_ack						(bar2_reg_ack),
 	.bar2_reg_rdata					(bar2_reg_rdata)
 );
+nvme_ssd_latency #(
+	.P_SLOT_TAG_WIDTH(P_SLOT_TAG_WIDTH),
+	.P_CQ_DATA_WIDTH(P_SLOT_TAG_WIDTH + 28)
+)
+nvme_ssd_latency_inst0 (
+	.cpu_bus_clk(cpu_bus_clk),
+	.cpu_bus_rst_n(cpu_bus_rst_n),
+	.model_cmd_wr_en(model_cmd_wr_en),
+	.model_cmd_wr_data0(model_cmd_wr_data0),
+	.model_cmd_wr_data1(model_cmd_wr_data1),
+	.model_cmd_wr_rdy_n(model_cmd_wr_rdy_n),
+
+	.pcie_user_clk(pcie_user_clk),
+	.pcie_user_rst_n(w_nvme_cmd_rst_n),
+	.model_enable(ssd_model_enable),
+	.model_reset(ssd_model_reset),
+	.read_lsb_cycles(ssd_read_lsb_cycles),
+	.read_msb_cycles(ssd_read_msb_cycles),
+	.program_cycles(ssd_program_cycles),
+	.fw_read_cycles(ssd_fw_read_cycles),
+	.fw_write_cycles(ssd_fw_write_cycles),
+	.ch_xfer_4k_cycles(ssd_ch_xfer_4k_cycles),
+
+	.in_cq_wr_en(w_dma_hcmd_cq_wr0_en),
+	.in_cq_wr_data0(w_dma_hcmd_cq_wr0_data0),
+	.in_cq_wr_data1(w_dma_hcmd_cq_wr0_data1),
+	.in_cq_wr_rdy_n(w_dma_hcmd_cq_wr0_rdy_n),
+	.out_cq_wr_en(w_hcmd_cq_wr0_en),
+	.out_cq_wr_data0(w_hcmd_cq_wr0_data0),
+	.out_cq_wr_data1(w_hcmd_cq_wr0_data1),
+	.out_cq_wr_rdy_n(w_hcmd_cq_wr0_rdy_n),
+
+	.model_status(ssd_model_status),
+	.model_submit_count(ssd_model_submit_count),
+	.model_release_count(ssd_model_release_count)
+);
+
 pcie_hcmd # (
 	.P_SLOT_TAG_WIDTH						(P_SLOT_TAG_WIDTH), //slot_modified
 	.P_SLOT_WIDTH							(P_SLOT_WIDTH), //slot_modified
@@ -840,10 +897,10 @@ dma_if_inst0
 	.pcie_tx_dma_fifo_rd_en					(w_tx_mwr1_rd_en),
 	.pcie_tx_dma_fifo_rd_data				(w_tx_mwr1_rd_data),
 
-	.hcmd_cq_wr0_en							(w_hcmd_cq_wr0_en),
-	.hcmd_cq_wr0_data0						(w_hcmd_cq_wr0_data0),
-	.hcmd_cq_wr0_data1						(w_hcmd_cq_wr0_data1),
-	.hcmd_cq_wr0_rdy_n						(w_hcmd_cq_wr0_rdy_n),
+	.hcmd_cq_wr0_en							(w_dma_hcmd_cq_wr0_en),
+		.hcmd_cq_wr0_data0						(w_dma_hcmd_cq_wr0_data0),
+		.hcmd_cq_wr0_data1						(w_dma_hcmd_cq_wr0_data1),
+		.hcmd_cq_wr0_rdy_n						(w_dma_hcmd_cq_wr0_rdy_n),
 
 
 	.cpu_bus_clk							(cpu_bus_clk),

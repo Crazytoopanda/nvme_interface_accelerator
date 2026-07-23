@@ -219,6 +219,17 @@ module s_axi_reg # (
 	output	[8:0]								auto_io_enable_mask,
 	output	[31:0]							auto_cq_irq_retry_cycles,
 	output	[31:0]							auto_error_clear,
+	output									ssd_model_enable,
+	output									ssd_model_reset,
+	output	[31:0]						ssd_read_lsb_cycles,
+	output	[31:0]						ssd_read_msb_cycles,
+	output	[31:0]						ssd_program_cycles,
+	output	[31:0]						ssd_fw_read_cycles,
+	output	[31:0]						ssd_fw_write_cycles,
+	output	[31:0]						ssd_ch_xfer_4k_cycles,
+	input	[31:0]						ssd_model_status,
+	input	[31:0]						ssd_model_submit_count,
+	input	[31:0]						ssd_model_release_count,
 	input	[31:0]							auto_status,
 	input	[31:0]							auto_error,
 	input	[31:0]							auto_cmd_count,
@@ -493,6 +504,14 @@ reg		[8:0]								r_auto_io_enable_mask;
 reg		[31:0]								r_auto_pf0_msi_ctrl;
 reg		[31:0]								r_auto_cq_mode;
 reg		[31:0]								r_auto_cq_irq_retry_cycles;
+reg		[31:0]								r_ssd_model_ctrl;
+reg		[31:0]								r_ssd_read_lsb_cycles;
+reg		[31:0]								r_ssd_read_msb_cycles;
+reg		[31:0]								r_ssd_program_cycles;
+reg		[31:0]								r_ssd_fw_read_cycles;
+reg		[31:0]								r_ssd_fw_write_cycles;
+reg		[31:0]								r_ssd_ch_xfer_4k_cycles;
+reg										r_ssd_model_reset_pulse;
 reg		[31:0]								r_auto_error_clear;
 reg										r_auto_reset_pulse;
 reg		[31:0]								r_auto_cq_irq_retry_count;
@@ -648,6 +667,14 @@ assign auto_ddr_base = r_auto_ddr_base;
 assign auto_ddr_limit = r_auto_ddr_limit;
 assign auto_io_enable_mask = r_auto_io_enable_mask;
 assign auto_cq_irq_retry_cycles = r_auto_cq_irq_retry_cycles;
+assign ssd_model_enable = r_ssd_model_ctrl[0];
+assign ssd_model_reset = r_ssd_model_reset_pulse;
+assign ssd_read_lsb_cycles = r_ssd_read_lsb_cycles;
+assign ssd_read_msb_cycles = r_ssd_read_msb_cycles;
+assign ssd_program_cycles = r_ssd_program_cycles;
+assign ssd_fw_read_cycles = r_ssd_fw_read_cycles;
+assign ssd_fw_write_cycles = r_ssd_fw_write_cycles;
+assign ssd_ch_xfer_4k_cycles = r_ssd_ch_xfer_4k_cycles;
 assign auto_error_clear = r_auto_error_clear;
 assign w_auto_cq_irq_retry_cqid = w_reg_wdata[7:4];
 assign w_auto_cq_irq_retry_wr = w_auto_reg_en & (w_reg_wr_addr[7:2] == 6'h16) &
@@ -1636,17 +1663,27 @@ begin
 		r_auto_pf0_msi_ctrl <= 0;
 		r_auto_cq_mode <= 0;
 		r_auto_cq_irq_retry_cycles <= 32'h0000_1000;
+			r_ssd_model_ctrl <= 0;
+			r_ssd_read_lsb_cycles <= 32'd7440;
+			r_ssd_read_msb_cycles <= 32'd10440;
+			r_ssd_program_cycles <= 32'd46250;
+			r_ssd_fw_read_cycles <= 32'd100;
+			r_ssd_fw_write_cycles <= 32'd200;
+			r_ssd_ch_xfer_4k_cycles <= 32'd808;
+			r_ssd_model_reset_pulse <= 0;
 		r_auto_error_clear <= 0;
 		r_auto_reset_pulse <= 0;
 	end
 	else begin
 		r_auto_error_clear <= 0;
 		r_auto_reset_pulse <= 0;
+		r_ssd_model_reset_pulse <= 0;
 
 		if((r_nvme_cc_en == 1'b1) && (nvme_cc_en == 1'b0)) begin
 			r_auto_ctrl <= 0;
 			r_auto_error_clear <= 32'hffff_ffff;
 			r_auto_reset_pulse <= 1'b1;
+				r_ssd_model_reset_pulse <= 1'b1;
 		end
 		else if(w_auto_reg_en == 1) begin
 			case(w_reg_wr_addr[7:2])
@@ -1663,6 +1700,13 @@ begin
 				6'h09: r_auto_pf0_msi_ctrl <= w_reg_wdata;
 				6'h0A: r_auto_cq_mode <= w_reg_wdata;
 				6'h18: r_auto_cq_irq_retry_cycles <= w_reg_wdata;
+					6'h19: begin r_ssd_model_ctrl <= w_reg_wdata & 32'hffff_fffd; r_ssd_model_reset_pulse <= w_reg_wdata[1]; end
+					6'h1A: r_ssd_read_lsb_cycles <= w_reg_wdata;
+					6'h1B: r_ssd_read_msb_cycles <= w_reg_wdata;
+					6'h1C: r_ssd_program_cycles <= w_reg_wdata;
+					6'h1D: r_ssd_fw_read_cycles <= w_reg_wdata;
+					6'h1E: r_ssd_fw_write_cycles <= w_reg_wdata;
+					6'h1F: r_ssd_ch_xfer_4k_cycles <= w_reg_wdata;
 			endcase
 		end
 	end
@@ -1902,6 +1946,16 @@ begin
 		6'h15: r_auto_reg_rdata = cq_dbg_last_dw2;
 		6'h16: r_auto_reg_rdata = {r_auto_cq_irq_retry_count[15:0], 12'b0, r_auto_cq_irq_retry_last_cqid};
 		6'h18: r_auto_reg_rdata = r_auto_cq_irq_retry_cycles;
+			6'h19: r_auto_reg_rdata = r_ssd_model_ctrl;
+			6'h1A: r_auto_reg_rdata = r_ssd_read_lsb_cycles;
+			6'h1B: r_auto_reg_rdata = r_ssd_read_msb_cycles;
+			6'h1C: r_auto_reg_rdata = r_ssd_program_cycles;
+			6'h1D: r_auto_reg_rdata = r_ssd_fw_read_cycles;
+			6'h1E: r_auto_reg_rdata = r_ssd_fw_write_cycles;
+			6'h1F: r_auto_reg_rdata = r_ssd_ch_xfer_4k_cycles;
+			6'h20: r_auto_reg_rdata = ssd_model_status;
+			6'h21: r_auto_reg_rdata = ssd_model_submit_count;
+			6'h22: r_auto_reg_rdata = ssd_model_release_count;
 	endcase
 end
 

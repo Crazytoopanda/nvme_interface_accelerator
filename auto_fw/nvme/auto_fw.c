@@ -1,5 +1,6 @@
 #include "auto_fw.h"
 #include "auto_hw_regs.h"
+#include "ssd_config.h"
 #include "../memory_map.h"
 
 #include <stdint.h>
@@ -65,6 +66,10 @@
 
 #ifndef AUTO_FW_CQ_IRQ_RETRY_CYCLES
 #define AUTO_FW_CQ_IRQ_RETRY_CYCLES         4096U
+#endif
+
+#ifndef AUTO_FW_SSD_MODEL_ENABLE
+#define AUTO_FW_SSD_MODEL_ENABLE            1U
 #endif
 
 #ifndef AUTO_FW_CQ_IRQ_RETRY_DELAY_SERVICE
@@ -979,6 +984,8 @@ static void auto_hw_reset(void)
 {
 	auto_reg_write(AUTO_REG_CTRL, AUTO_CTRL_RESET);
 	auto_reg_write(AUTO_REG_CTRL, 0U);
+	auto_reg_write(AUTO_REG_SSD_MODEL_CTRL, AUTO_SSD_MODEL_RESET);
+	auto_reg_write(AUTO_REG_SSD_MODEL_CTRL, 0U);
 	auto_reg_write(AUTO_REG_ERROR, 0xffffffffU);
 }
 
@@ -993,6 +1000,19 @@ static void auto_hw_configure(void)
 	auto_reg_write(AUTO_REG_PF0_MSI_CTRL, 0x00000101U);
 	auto_reg_write(AUTO_REG_CQ_MODE, AUTO_CQ_MODE_HW);
 	auto_reg_write(AUTO_REG_CQ_IRQ_RETRY_CYCLES, AUTO_FW_CQ_IRQ_RETRY_CYCLES);
+	auto_reg_write(AUTO_REG_SSD_READ_LSB_CYCLES,
+		       (uint32_t)AUTO_FW_SSD_READ_LSB_CYCLES);
+	auto_reg_write(AUTO_REG_SSD_READ_MSB_CYCLES,
+		       (uint32_t)AUTO_FW_SSD_READ_MSB_CYCLES);
+	auto_reg_write(AUTO_REG_SSD_PROGRAM_CYCLES,
+		       (uint32_t)AUTO_FW_SSD_PROGRAM_CYCLES);
+	auto_reg_write(AUTO_REG_SSD_FW_READ_CYCLES,
+		       (uint32_t)AUTO_FW_SSD_FW_READ_CYCLES);
+	auto_reg_write(AUTO_REG_SSD_FW_WRITE_CYCLES,
+		       (uint32_t)AUTO_FW_SSD_FW_WRITE_CYCLES);
+	auto_reg_write(AUTO_REG_SSD_CH_XFER_4K_CYCLES,
+		       (uint32_t)AUTO_FW_SSD_CH_XFER_4K_CYCLES);
+	auto_reg_write(AUTO_REG_SSD_MODEL_CTRL, AUTO_FW_SSD_MODEL_ENABLE ? AUTO_SSD_MODEL_ENABLE : 0U);
 }
 
 static void auto_fw_clear_for_rearm(void)

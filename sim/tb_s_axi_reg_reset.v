@@ -45,6 +45,14 @@ module tb_s_axi_reg_reset;
     wire [8:0] io_cq_irq_en;
     wire [3:0] reset_count;
     wire [31:0] auto_cq_irq_retry_cycles;
+    wire ssd_model_enable;
+    wire ssd_model_reset;
+    wire [31:0] ssd_read_lsb_cycles;
+    wire [31:0] ssd_read_msb_cycles;
+    wire [31:0] ssd_program_cycles;
+    wire [31:0] ssd_fw_read_cycles;
+    wire [31:0] ssd_fw_write_cycles;
+    wire [31:0] ssd_ch_xfer_4k_cycles;
 
     wire [7:0] io_sq1_size, io_sq2_size, io_sq3_size, io_sq4_size;
     wire [7:0] io_sq5_size, io_sq6_size, io_sq7_size, io_sq8_size;
@@ -169,6 +177,20 @@ module tb_s_axi_reg_reset;
         .auto_io_enable_mask(),
         .auto_cq_irq_retry_cycles(auto_cq_irq_retry_cycles),
         .auto_error_clear(),
+        .ssd_model_enable(ssd_model_enable),
+        .ssd_model_reset(ssd_model_reset),
+        .ssd_read_lsb_cycles(ssd_read_lsb_cycles),
+        .ssd_read_msb_cycles(ssd_read_msb_cycles),
+        .ssd_program_cycles(ssd_program_cycles),
+        .ssd_fw_read_cycles(ssd_fw_read_cycles),
+        .ssd_fw_write_cycles(ssd_fw_write_cycles),
+        .ssd_ch_xfer_4k_cycles(ssd_ch_xfer_4k_cycles),
+        .ssd_model_status(32'd0),
+        .ssd_model_submit_count(32'd0),
+        .ssd_model_release_count(32'd0),
+        .cq_dbg_write_count(32'd0),
+        .cq_dbg_last_dw2(32'd0),
+        .cq_dbg_last_dw3(32'd0),
         .auto_status(32'd0),
         .auto_error(32'd0),
         .auto_cmd_count(32'd0),
@@ -225,6 +247,13 @@ module tb_s_axi_reg_reset;
         rst_n = 1'b1;
         repeat (5) @(posedge clk);
         expect_equal("CQ IRQ retry reset default", auto_cq_irq_retry_cycles, 32'h0000_1000);
+        expect_equal("SSD read LSB reset default", ssd_read_lsb_cycles, 32'd7440);
+        expect_equal("SSD read MSB reset default", ssd_read_msb_cycles, 32'd10440);
+        expect_equal("SSD program reset default", ssd_program_cycles, 32'd46250);
+        expect_equal("SSD FW read reset default", ssd_fw_read_cycles, 32'd100);
+        expect_equal("SSD FW write reset default", ssd_fw_write_cycles, 32'd200);
+        expect_equal("SSD channel 4K reset default", ssd_ch_xfer_4k_cycles, 32'd808);
+        expect_equal("SSD model disabled after reset", {31'd0, ssd_model_enable}, 32'd0);
         axi_write(32'h0000_0460, 32'h0003_d090);
         expect_equal("CQ IRQ retry firmware value", auto_cq_irq_retry_cycles, 32'h0003_d090);
 

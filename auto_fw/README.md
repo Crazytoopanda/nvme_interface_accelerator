@@ -1,5 +1,4 @@
 # auto_fw
-| `0x060` | `0xA0000460` |
 Minimal MicroBlaze firmware for the autonomous NVMe datapath.
 
 This tree is intentionally separate from `fw/`.  The target split is:
@@ -18,6 +17,8 @@ Source layout:
 
 - `main.c`: MicroBlaze entry point, matching the top-level `fw/main.c` convention.
 - `nvme/`: auto firmware helpers and hardware register definitions.
+- `nvme/ssd_config.h`: nvmevirt-compatible SSD geometry and timing profile;
+  firmware derives the hardware timeline register values from this file.
 - `kernel_config.h` and `memory_map.h`: minimal top-level configuration headers.
 - `boot/microblaze/lscript.ld`: MicroBlaze linker script copied from the normal firmware tree.
 
@@ -102,6 +103,30 @@ inside BAR2, for example BAR2 `+ 0x400` for `AUTO_REG_MAGIC`.
 | `0x058` | `0xA0000458` | `AUTO_REG_CQ_IRQ_RETRY` | W1P/RO | Write bit 0 as `1` with bits `[7:4]` holding CQID `0`-`8` to retry PF0 MSI for an already-written CQE. Read returns `{retry_count[15:0], 12'b0, last_cqid}`. |
 | `0x05c` | `0xA000045c` | `AUTO_REG_SW_DOORBELL` | Reserved | Declared for future firmware handoff, not decoded by current RTL. |
 | `0x060` | `0xA0000460` | `AUTO_REG_CQ_IRQ_RETRY_CYCLES` | RW | Per-CQ automatic MSI retry timeout in PCIe user-clock cycles. Reset and firmware default are `4096`; write `0` to disable automatic retries without suppressing the first MSI. |
+| `0x064` | `0xA0000464` | `AUTO_REG_SSD_MODEL_CTRL` | RW | Bit 0 enables deadline gating; bit 1 resets model timelines and pending completions. |
+| `0x068` | `0xA0000468` | `AUTO_REG_SSD_READ_LSB_CYCLES` | RW | 4 KiB MLC LSB NAND read service time in PCIe user-clock cycles. |
+| `0x06c` | `0xA000046c` | `AUTO_REG_SSD_READ_MSB_CYCLES` | RW | 4 KiB MLC MSB NAND read service time in PCIe user-clock cycles. |
+| `0x070` | `0xA0000470` | `AUTO_REG_SSD_PROGRAM_CYCLES` | RW | NAND program service time in PCIe user-clock cycles. |
+| `0x074` | `0xA0000474` | `AUTO_REG_SSD_FW_READ_CYCLES` | RW | Firmware overhead applied to each read command. |
+| `0x078` | `0xA0000478` | `AUTO_REG_SSD_FW_WRITE_CYCLES` | RW | Firmware/write-buffer overhead applied to each write command. |
+| `0x07c` | `0xA000047c` | `AUTO_REG_SSD_CH_XFER_4K_CYCLES` | RW | NAND-channel transfer time per 4 KiB segment. |
+| `0x080` | `0xA0000480` | `AUTO_REG_SSD_MODEL_STATUS` | RO | Timeline model status and pending-completion state. |
+| `0x084` | `0xA0000484` | `AUTO_REG_SSD_MODEL_SUBMIT_COUNT` | RO | Commands accepted by the SSD timeline model. |
+| `0x088` | `0xA0000488` | `AUTO_REG_SSD_MODEL_RELEASE_COUNT` | RO | DMA completions released to the CQ pipeline after their deadlines. |
+
+SSD timing profile:
+
+- `nvme/ssd_config.h` is the single firmware-side source for Samsung 970 PRO
+  geometry, NAND timing, firmware overhead, and channel bandwidth.
+- Timing values remain in nanoseconds. `SSD_NS_TO_PCIE_CYCLES()` rounds them up
+  using `AUTO_FW_PCIE_USER_CLOCK_HZ`, which defaults to 250 MHz.
+- The 4 KiB channel transfer follows nvmevirt integer arithmetic: 32 x 128-byte
+  units at 1200 MiB/s. This gives 3232 ns and 808 cycles at 250 MHz.
+- The resulting defaults are 7440 LSB-read, 10440 MSB-read, 46250 program,
+  100 firmware-read, 200 firmware-write, and 808 channel-transfer cycles.
+- Change the SSD profile or user-clock definition in `ssd_config.h`; do not add
+  hand-calculated timing constants to `auto_fw.c`.
+
 
 CQ IRQ retry watchdog:
 

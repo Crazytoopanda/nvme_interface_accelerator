@@ -14,6 +14,9 @@ $(BUILD_DIR)/%.o: %.c | $(BUILD_DIR)
 	mkdir -p $(dir $@)
 	$(MB_CC) $(CFLAGS) -c $< -o $@
 
+$(BUILD_DIR)/nvme/auto_fw.o: nvme/auto_fw.h nvme/auto_hw_regs.h \
+	nvme/ssd_config.h kernel_config.h memory_map.h
+
 $(BUILD_DIR)/auto_fw.elf: $(OBJS)
 	$(MB_CC) $(CFLAGS) $(OBJS) -o $@
 

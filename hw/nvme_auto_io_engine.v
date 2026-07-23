@@ -32,6 +32,7 @@ module nvme_auto_io_engine # (
 	input	[C_M_AXI_ADDR_WIDTH-1:0]		auto_ddr_limit,
 	input	[8:0]							auto_io_enable_mask,
 	input	[31:0]							auto_error_clear,
+	input									model_enable,
 
 	output									hcmd_sq_rd_en,
 	input	[(P_SLOT_TAG_WIDTH+12)-1:0]		hcmd_sq_rd_data,
@@ -45,6 +46,11 @@ module nvme_auto_io_engine # (
 	output	[C_M_AXI_ADDR_WIDTH+23:0]		dma_cmd_wr_data0,
 	output	[C_M_AXI_ADDR_WIDTH+23:0]		dma_cmd_wr_data1,
 	input									dma_cmd_wr_rdy_n,
+
+	output									model_cmd_wr_en,
+	output	[63:0]						model_cmd_wr_data0,
+	output	[63:0]						model_cmd_wr_data1,
+	input									model_cmd_wr_rdy_n,
 
 	output	[31:0]							auto_status,
 	output	[31:0]							auto_error,
@@ -146,6 +152,8 @@ wire	[C_M_AXI_ADDR_WIDTH-1:0]		w_last_dev_addr;
 wire	[C_M_AXI_ADDR_WIDTH-1:0]		w_segment_dev_addr;
 wire									w_lba_fits;
 wire									w_submit_fire;
+wire									w_model_first;
+wire									w_submit_blocked;
 wire									w_final_auto_cpl;
 wire	[3:0]								w_head_sq_qid;
 wire									w_head_qid_enabled;
@@ -192,7 +200,9 @@ assign w_opcode_rd_addr = {r_hcmd_slot_tag, 4'h0};
 assign w_slba_lo_rd_addr = {r_hcmd_slot_tag, 4'ha};
 assign w_slba_hi_rd_addr = {r_hcmd_slot_tag, 4'hb};
 assign w_nlb_rd_addr = {r_hcmd_slot_tag, 4'hc};
-assign w_submit_fire = (cur_state == S_SUBMIT) & (dma_cmd_wr_rdy_n == 1'b0);
+assign w_model_first = model_enable & (r_segment_index == 0);
+assign w_submit_blocked = dma_cmd_wr_rdy_n | (w_model_first & model_cmd_wr_rdy_n);
+assign w_submit_fire = (cur_state == S_SUBMIT) & ~w_submit_blocked;
 assign w_final_auto_cpl = r_last_segment & auto_cq_enable & (auto_cq_mode == AUTO_CQ_MODE_HW);
 assign w_head_sq_qid = hcmd_sq_rd_data[3:0];
 assign w_head_qid_enabled = (w_head_sq_qid != 4'h0) && (w_head_sq_qid <= 4'h8) &&
@@ -213,6 +223,9 @@ assign dma_cmd_wr_data0 = {{(13-P_SLOT_TAG_WIDTH){1'b0}}, DMA_TYPE_AUTO, r_dma_d
 						   r_hcmd_slot_tag, DMA_LEN_4K, w_segment_dev_addr[C_M_AXI_ADDR_WIDTH-1:2]};
 assign dma_cmd_wr_data1 = {{(C_M_AXI_ADDR_WIDTH-32){1'b0}}, w_final_auto_cpl, r_segment_index,
 						   {C_PCIE_ADDR_WIDTH-2{1'b0}}};
+assign model_cmd_wr_en = w_submit_fire & w_model_first;
+assign model_cmd_wr_data0 = w_start_lba;
+assign model_cmd_wr_data1 = {44'b0, (r_dma_dir == DMA_DIR_RX), r_total_segments, r_hcmd_slot_tag};
 
 assign auto_status = {7'b0, cur_state, 2'b0, auto_msi_enable, w_busy, 5'b0,
 					 r_dma_stalled, r_unsupported_pending, (r_auto_error != 32'h0),
@@ -297,7 +310,7 @@ begin
 				next_state <= S_ERROR;
 		end
 		S_SUBMIT: begin
-			if(dma_cmd_wr_rdy_n == 1'b1)
+			if(w_submit_blocked == 1'b1)
 				next_state <= S_SUBMIT;
 			else if(r_last_segment == 1'b1)
 				next_state <= S_IDLE;
@@ -383,8 +396,8 @@ begin
 				r_decode_error <= w_range_decode_error;
 			end
 			S_SUBMIT: begin
-				r_dma_stalled <= dma_cmd_wr_rdy_n;
-				if(dma_cmd_wr_rdy_n == 1'b0)
+				r_dma_stalled <= w_submit_blocked;
+				if(w_submit_fire)
 					r_dma_submit_count <= r_dma_submit_count + 1;
 			end
 			S_NEXT_SEG: begin

@@ -20,6 +20,7 @@ module tb_nvme_auto_io_engine;
     reg [C_M_AXI_ADDR_WIDTH-1:0] auto_ddr_limit = 64'h00000050_002fffff;
     reg [8:0] auto_io_enable_mask = 9'h1fe;
     reg [31:0] auto_error_clear = 32'h0;
+    reg model_enable = 1'b0;
 
     wire hcmd_sq_rd_en;
     reg [(P_SLOT_TAG_WIDTH+12)-1:0] hcmd_sq_rd_data = 22'h0;
@@ -33,6 +34,10 @@ module tb_nvme_auto_io_engine;
     wire [C_M_AXI_ADDR_WIDTH+23:0] dma_cmd_wr_data0;
     wire [C_M_AXI_ADDR_WIDTH+23:0] dma_cmd_wr_data1;
     wire dma_cmd_wr_rdy_n;
+    wire model_cmd_wr_en;
+    wire [63:0] model_cmd_wr_data0;
+    wire [63:0] model_cmd_wr_data1;
+    reg model_cmd_wr_rdy_n = 1'b0;
 
     wire [31:0] auto_status;
     wire [31:0] auto_error;
@@ -77,6 +82,7 @@ module tb_nvme_auto_io_engine;
         .auto_ddr_limit(auto_ddr_limit),
         .auto_io_enable_mask(auto_io_enable_mask),
         .auto_error_clear(auto_error_clear),
+        .model_enable(model_enable),
         .hcmd_sq_rd_en(hcmd_sq_rd_en),
         .hcmd_sq_rd_data(hcmd_sq_rd_data),
         .hcmd_sq_empty_n(hcmd_sq_empty_n),
@@ -87,6 +93,10 @@ module tb_nvme_auto_io_engine;
         .dma_cmd_wr_data0(dma_cmd_wr_data0),
         .dma_cmd_wr_data1(dma_cmd_wr_data1),
         .dma_cmd_wr_rdy_n(dma_cmd_wr_rdy_n),
+        .model_cmd_wr_en(model_cmd_wr_en),
+        .model_cmd_wr_data0(model_cmd_wr_data0),
+        .model_cmd_wr_data1(model_cmd_wr_data1),
+        .model_cmd_wr_rdy_n(model_cmd_wr_rdy_n),
         .auto_status(auto_status),
         .auto_error(auto_error),
         .auto_cmd_count(auto_cmd_count),

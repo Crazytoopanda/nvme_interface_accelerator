@@ -609,6 +609,17 @@ wire	[C_M0_AXI_ADDR_WIDTH-1:0]			w_auto_ddr_limit;
 wire	[8:0]								w_auto_io_enable_mask;
 wire	[31:0]								w_auto_cq_irq_retry_cycles;
 wire	[31:0]								w_auto_error_clear;
+wire									w_ssd_model_enable;
+wire									w_ssd_model_reset;
+wire	[31:0]							w_ssd_read_lsb_cycles;
+wire	[31:0]							w_ssd_read_msb_cycles;
+wire	[31:0]							w_ssd_program_cycles;
+wire	[31:0]							w_ssd_fw_read_cycles;
+wire	[31:0]							w_ssd_fw_write_cycles;
+wire	[31:0]							w_ssd_ch_xfer_4k_cycles;
+wire	[31:0]							w_ssd_model_status;
+wire	[31:0]							w_ssd_model_submit_count;
+wire	[31:0]							w_ssd_model_release_count;
 wire	[31:0]								w_auto_status;
 wire	[31:0]								w_auto_error;
 wire	[31:0]								w_auto_cmd_count;
@@ -626,6 +637,10 @@ wire	[(P_SLOT_TAG_WIDTH+2)+1:0]			w_auto_hcmd_table_rd_addr;
 wire										w_auto_dma_cmd_wr_en;
 wire	[C_M0_AXI_ADDR_WIDTH+23:0]			w_auto_dma_cmd_wr_data0;
 wire	[C_M0_AXI_ADDR_WIDTH+23:0]			w_auto_dma_cmd_wr_data1;
+wire									w_model_cmd_wr_en;
+wire	[63:0]							w_model_cmd_wr_data0;
+wire	[63:0]							w_model_cmd_wr_data1;
+wire									w_model_cmd_wr_rdy_n;
 
 wire										w_hcmd_sq_rd_en_mux;
 wire										w_dma_cmd_wr_en_mux;
@@ -929,6 +944,7 @@ nvme_auto_io_engine_inst0 (
 	.auto_ddr_limit				(w_auto_ddr_limit),
 	.auto_io_enable_mask		(w_auto_io_enable_mask),
 	.auto_error_clear			(w_auto_error_clear),
+		.model_enable					(w_ssd_model_enable),
 
 	.hcmd_sq_rd_en				(w_auto_hcmd_sq_rd_en),
 	.hcmd_sq_rd_data			(w_hcmd_sq_rd_data),
@@ -942,6 +958,11 @@ nvme_auto_io_engine_inst0 (
 	.dma_cmd_wr_data0			(w_auto_dma_cmd_wr_data0),
 	.dma_cmd_wr_data1			(w_auto_dma_cmd_wr_data1),
 	.dma_cmd_wr_rdy_n			(w_dma_cmd_wr_rdy_n),
+
+		.model_cmd_wr_en				(w_model_cmd_wr_en),
+		.model_cmd_wr_data0			(w_model_cmd_wr_data0),
+		.model_cmd_wr_data1			(w_model_cmd_wr_data1),
+		.model_cmd_wr_rdy_n			(w_model_cmd_wr_rdy_n),
 
 	.auto_status					(w_auto_status),
 	.auto_error					(w_auto_error),
@@ -1213,6 +1234,17 @@ s_axi_top_inst0 (
 	.auto_io_enable_mask				(w_auto_io_enable_mask),
 	.auto_cq_irq_retry_cycles		(w_auto_cq_irq_retry_cycles),
 	.auto_error_clear					(w_auto_error_clear),
+	.ssd_model_enable					(w_ssd_model_enable),
+	.ssd_model_reset					(w_ssd_model_reset),
+	.ssd_read_lsb_cycles				(w_ssd_read_lsb_cycles),
+	.ssd_read_msb_cycles				(w_ssd_read_msb_cycles),
+	.ssd_program_cycles				(w_ssd_program_cycles),
+	.ssd_fw_read_cycles				(w_ssd_fw_read_cycles),
+	.ssd_fw_write_cycles				(w_ssd_fw_write_cycles),
+	.ssd_ch_xfer_4k_cycles			(w_ssd_ch_xfer_4k_cycles),
+	.ssd_model_status					(w_ssd_model_status),
+	.ssd_model_submit_count			(w_ssd_model_submit_count),
+	.ssd_model_release_count			(w_ssd_model_release_count),
 	.auto_status						(w_auto_status),
 	.auto_error							(w_auto_error),
 	.auto_cmd_count						(w_auto_cmd_count),
@@ -1504,6 +1536,22 @@ nvme_pcie_inst0(
 	.dma_cmd_wr_data0						(w_dma_cmd_wr_data0_mux),
 	.dma_cmd_wr_data1						(w_dma_cmd_wr_data1_mux),
 	.dma_cmd_wr_rdy_n						(w_dma_cmd_wr_rdy_n),
+
+	.model_cmd_wr_en						(w_model_cmd_wr_en),
+	.model_cmd_wr_data0					(w_model_cmd_wr_data0),
+	.model_cmd_wr_data1					(w_model_cmd_wr_data1),
+	.model_cmd_wr_rdy_n					(w_model_cmd_wr_rdy_n),
+	.ssd_model_enable					(w_ssd_model_enable),
+	.ssd_model_reset					(w_ssd_model_reset),
+	.ssd_read_lsb_cycles				(w_ssd_read_lsb_cycles),
+	.ssd_read_msb_cycles				(w_ssd_read_msb_cycles),
+	.ssd_program_cycles				(w_ssd_program_cycles),
+	.ssd_fw_read_cycles				(w_ssd_fw_read_cycles),
+	.ssd_fw_write_cycles				(w_ssd_fw_write_cycles),
+	.ssd_ch_xfer_4k_cycles			(w_ssd_ch_xfer_4k_cycles),
+	.ssd_model_status					(w_ssd_model_status),
+	.ssd_model_submit_count			(w_ssd_model_submit_count),
+	.ssd_model_release_count			(w_ssd_model_release_count),
 
 	.dma_rx_direct_done_cnt					(w_dma_rx_direct_done_cnt),
 	.dma_tx_direct_done_cnt					(w_dma_tx_direct_done_cnt),
