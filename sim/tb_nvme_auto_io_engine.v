@@ -6,6 +6,7 @@ module tb_nvme_auto_io_engine;
     localparam C_PCIE_ADDR_WIDTH = 48;
     localparam S_IDLE = 5'd0;
     localparam S_SUBMIT = 5'd15;
+    localparam S_FLUSH_CPL = 5'd18;
 
     reg clk = 1'b0;
     reg rst_n = 1'b0;
@@ -29,6 +30,11 @@ module tb_nvme_auto_io_engine;
     wire hcmd_table_rd_active;
     wire [(P_SLOT_TAG_WIDTH+2)+1:0] hcmd_table_rd_addr;
     reg [31:0] hcmd_table_rd_data;
+
+    wire flush_cq_wr_en;
+    wire [(P_SLOT_TAG_WIDTH+28)-1:0] flush_cq_wr_data0;
+    wire [(P_SLOT_TAG_WIDTH+28)-1:0] flush_cq_wr_data1;
+    reg flush_cq_wr_rdy_n = 1'b0;
 
     wire dma_cmd_wr_en;
     wire [C_M_AXI_ADDR_WIDTH+23:0] dma_cmd_wr_data0;
@@ -57,6 +63,9 @@ module tb_nvme_auto_io_engine;
     reg [7:0] stall_remaining = 8'h0;
 
     integer dma_count = 0;
+    integer flush_cq_count = 0;
+    reg [(P_SLOT_TAG_WIDTH+28)-1:0] got_flush_cq_data0;
+    reg [(P_SLOT_TAG_WIDTH+28)-1:0] got_flush_cq_data1;
     reg [C_M_AXI_ADDR_WIDTH+23:0] got_data0 [0:15];
     reg [C_M_AXI_ADDR_WIDTH+23:0] got_data1 [0:15];
 
@@ -89,6 +98,10 @@ module tb_nvme_auto_io_engine;
         .hcmd_table_rd_active(hcmd_table_rd_active),
         .hcmd_table_rd_addr(hcmd_table_rd_addr),
         .hcmd_table_rd_data(hcmd_table_rd_data),
+        .flush_cq_wr_en(flush_cq_wr_en),
+        .flush_cq_wr_data0(flush_cq_wr_data0),
+        .flush_cq_wr_data1(flush_cq_wr_data1),
+        .flush_cq_wr_rdy_n(flush_cq_wr_rdy_n),
         .dma_cmd_wr_en(dma_cmd_wr_en),
         .dma_cmd_wr_data0(dma_cmd_wr_data0),
         .dma_cmd_wr_data1(dma_cmd_wr_data1),
@@ -135,6 +148,11 @@ module tb_nvme_auto_io_engine;
                      dma_cmd_wr_data1[54:46]);
             dma_count <= dma_count + 1;
         end
+        if (flush_cq_wr_en) begin
+            got_flush_cq_data0 <= flush_cq_wr_data0;
+            got_flush_cq_data1 <= flush_cq_wr_data1;
+            flush_cq_count <= flush_cq_count + 1;
+        end
         if (stall_remaining != 0 && auto_status[24:20] == S_SUBMIT)
             stall_remaining <= stall_remaining - 1'b1;
     end
@@ -172,6 +190,7 @@ module tb_nvme_auto_io_engine;
             cmd_slba = slba;
             cmd_seq = cmd_seq + 1'b1;
             dma_count = 0;
+            flush_cq_count = 0;
             stall_remaining = stall_cycles;
             hcmd_sq_rd_data = {cmd_seq, slot, qid};
             hcmd_sq_empty_n = 1'b1;
@@ -251,6 +270,24 @@ module tb_nvme_auto_io_engine;
         if (auto_status[10] !== 1'b0)
             fail("DMA stalled bit remained set after backpressure cleared");
 
+        flush_cq_wr_rdy_n = 1'b1;
+        start_cmd(4'd1, 10'd27, 8'h00, 16'd0, 64'd0, 8'd0);
+        repeat (20) @(posedge clk);
+        if (auto_status[24:20] != S_FLUSH_CPL)
+            fail("flush did not wait for CQ backpressure");
+        if (flush_cq_count != 0 || dma_count != 0)
+            fail("blocked flush emitted completion or DMA");
+        flush_cq_wr_rdy_n = 1'b0;
+        wait_idle();
+        if (flush_cq_count != 1)
+            fail("flush did not emit exactly one CQ entry");
+        if (got_flush_cq_data0 !== {26'b0, 10'd27, 2'b01})
+            fail("flush CQ entry did not encode auto completion and slot");
+        if (got_flush_cq_data1 !== {(P_SLOT_TAG_WIDTH+28){1'b0}})
+            fail("flush CQ status/specific data was not success");
+        if (auto_error != 32'h0 || auto_status[9] != 1'b0)
+            fail("flush incorrectly entered unsupported error state");
+
         start_cmd(4'd2, 10'd9, 8'h09, 16'd0, 64'd0, 8'd0);
         wait_idle();
         if (dma_count != 0)
@@ -270,7 +307,7 @@ module tb_nvme_auto_io_engine;
         if ((auto_error & 32'h00000008) == 32'h0)
             fail("out-of-range command did not set DDR range error");
 
-        $display("PASS: nvme_auto_io_engine SQ decode, SLBA address, DMA packing, final auto_cpl, backpressure, and error paths verified");
+        $display("PASS: nvme_auto_io_engine read/write DMA, backpressured Flush CQ completion, and error paths verified");
         $finish;
     end
 endmodule

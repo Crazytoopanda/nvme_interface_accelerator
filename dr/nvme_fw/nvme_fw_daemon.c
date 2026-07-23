@@ -1197,7 +1197,7 @@ int main(int argc, char **argv)
 		.enable_dma_data = 1,
 		.enable_io_dma_data = 1,
 		.status_once = 0,
-		.run = 1,
+		.run = 0,
 		.mgmt_dev_addr = FW_DEFAULT_MGMT_DEV_ADDR,
 		.task = FW_TASK_IDLE,
 	};
@@ -1249,6 +1249,17 @@ int main(int argc, char **argv)
 
 	signal(SIGINT, on_signal);
 	signal(SIGTERM, on_signal);
+	if (!fw.run) {
+		setvbuf(stdout, NULL, _IONBF, 0);
+		setvbuf(stderr, NULL, _IONBF, 0);
+		fprintf(stderr,
+			"nvme_fw_daemon: safe open-only mode; pass --run only when MicroBlaze auto_fw is stopped\n");
+		close(fw.fd);
+		return 0;
+	}
+
+	fprintf(stderr,
+		"nvme_fw_daemon: WARNING: legacy host firmware owns CSTS, queues, DMA, CQ, and PF0 MSI\n");
 	if (fw.enable_pf0_msi && config_pf0_msi(&fw) < 0) {
 		close(fw.fd);
 		return 1;
@@ -1259,11 +1270,6 @@ int main(int argc, char **argv)
 	FW_LOG("nvme_fw_daemon: opened %s poll_us=%u mgmt_dev_addr=0x%llx pf0_msi=%d dma_data=%d io_dma_data=%d run=%d\n",
 	       dev, fw.poll_us, (unsigned long long)fw.mgmt_dev_addr,
 	       fw.enable_pf0_msi, fw.enable_dma_data, fw.enable_io_dma_data, fw.run);
-	if (!fw.run) {
-		FW_LOG("nvme_fw_daemon: safe open-only mode; pass --run to start BAR2 polling\n");
-		close(fw.fd);
-		return 0;
-	}
 	while (!stop) {
 		if (firmware_poll(&fw) < 0) {
 			close(fw.fd);

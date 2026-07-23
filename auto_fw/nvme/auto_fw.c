@@ -1256,6 +1256,7 @@ static const char *auto_fw_auto_state_name(uint32_t state)
 	case 15U: return "SUBMIT";
 	case 16U: return "NEXT_SEG";
 	case 17U: return "ERROR";
+	case 18U: return "FLUSH_CPL";
 	default: return "UNKNOWN";
 	}
 }

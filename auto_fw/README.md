@@ -5,8 +5,8 @@ This tree is intentionally separate from `fw/`.  The target split is:
 
 - MicroBlaze handles NVMe controller bring-up, admin commands, queue setup,
   shutdown, and hardware automation configuration.
-- Hardware handles IO SQ consumption, SQE decode, auto DMA submission, DMA-done
-  tracking, CQ write, slot release, and PF0 MSI for normal IO.
+- Hardware handles IO SQ consumption, SQE decode, Read/Write auto DMA submission,
+  no-data Flush completion, DMA-done tracking, CQ write, slot release, and PF0 MSI for normal IO.
 - MicroBlaze only sees automation errors, unsupported commands, and status
   counters after IO automation is enabled.
 
@@ -148,7 +148,7 @@ CQ IRQ retry watchdog:
 | Bit | Name | Meaning |
 | --- | --- | --- |
 | 0 | `AUTO_ERR_ADMIN_OR_MASKED_QID` | Admin queue or disabled IO queue was consumed. |
-| 1 | `AUTO_ERR_UNSUPPORTED_OPCODE` | Opcode was not IO read/write. |
+| 1 | `AUTO_ERR_UNSUPPORTED_OPCODE` | Opcode was not IO Flush/Write/Read (`0x00`/`0x01`/`0x02`). |
 | 2 | `AUTO_ERR_DISABLED_OPCODE` | Read/write opcode is disabled in `AUTO_REG_CTRL`. |
 | 3 | `AUTO_ERR_DDR_RANGE` | `auto_ddr_base + (SLBA + NLB) * 4096` exceeds `AUTO_REG_DDR_LIMIT`. |
 | 4 | `AUTO_ERR_AUTO_CQ_DISABLED` | Auto CQ bit is not enabled. |

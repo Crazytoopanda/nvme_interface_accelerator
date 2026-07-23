@@ -31,6 +31,8 @@ integer submit_cycle = 0;
 integer release_cycle = 0;
 integer first_release_latency = 0;
 reg [63:0] first_due;
+reg [63:0] parallel_due0;
+reg [63:0] parallel_due1;
 
 always #5 cpu_clk = ~cpu_clk;
 always #2 pcie_clk = ~pcie_clk;
@@ -125,8 +127,25 @@ initial begin
 		$fatal(1, "metadata submit count mismatch");
 	wait(release_count == 2);
 
-	$display("PASS: Samsung 970 PRO 4K read=%0d cycles, same-LUN timeline, bypass and CQ decoupling OK",
-		 first_release_latency);
+	/*
+	 * SLBA 4 and 8 map to separate NAND channels. Their deadlines must
+	 * overlap instead of inheriting the same-LUN serialization interval.
+	 */
+	send_meta(10'd13, 64'd4, 1'b0);
+	send_done(10'd13);
+	send_meta(10'd14, 64'd8, 1'b0);
+	send_done(10'd14);
+	wait(submit_count == 4);
+	parallel_due0 = dut.r_due_bank5[1];
+	parallel_due1 = dut.r_due_bank6[1];
+	if(parallel_due1 < parallel_due0 ||
+	   parallel_due1 - parallel_due0 > 64'd32)
+		$fatal(1, "different-channel commands serialized: due delta=%0d cycles",
+		       parallel_due1 - parallel_due0);
+	wait(release_count == 4);
+
+	$display("PASS: Samsung 970 PRO 4K read=%0d cycles, same-LUN spacing=8248 cycles, different-channel delta=%0d cycles, bypass and CQ decoupling OK",
+		 first_release_latency, parallel_due1 - parallel_due0);
 	$finish;
 end
 

@@ -39,6 +39,63 @@
 #define NVME_FW_REG_DMA_CMD_FIFO       0x310u
 #define NVME_FW_REG_DMA_CMD_TRIG       0x330u
 #define NVME_FW_REG_CPL_FIFO_TRIG      0x340u
+#define NVME_FW_REG_CMD_FIFO_PEEK      0x344u
+
+/* Hardware I/O automation and SSD latency-model registers. */
+#define NVME_FW_REG_AUTO_BASE               0x400u
+#define NVME_FW_REG_AUTO_MAGIC              0x400u
+#define NVME_FW_REG_AUTO_CTRL               0x404u
+#define NVME_FW_REG_AUTO_STATUS             0x408u
+#define NVME_FW_REG_AUTO_ERROR              0x40cu
+#define NVME_FW_REG_AUTO_DDR_BASE_LO        0x410u
+#define NVME_FW_REG_AUTO_DDR_BASE_HI        0x414u
+#define NVME_FW_REG_AUTO_DDR_LIMIT_LO       0x418u
+#define NVME_FW_REG_AUTO_DDR_LIMIT_HI       0x41cu
+#define NVME_FW_REG_AUTO_IO_ENABLE_MASK     0x420u
+#define NVME_FW_REG_AUTO_PF0_MSI_CTRL       0x424u
+#define NVME_FW_REG_AUTO_CQ_MODE            0x428u
+#define NVME_FW_REG_AUTO_CMD_COUNT          0x430u
+#define NVME_FW_REG_AUTO_DMA_SUBMIT_COUNT   0x434u
+#define NVME_FW_REG_AUTO_DMA_DONE_COUNT     0x438u
+#define NVME_FW_REG_AUTO_CQ_WRITE_COUNT     0x43cu
+#define NVME_FW_REG_AUTO_LAST_CQE_DW3       0x440u
+#define NVME_FW_REG_AUTO_UNSUPPORTED_COUNT  0x444u
+#define NVME_FW_REG_AUTO_LAST_QID_SLOT      0x448u
+#define NVME_FW_REG_AUTO_LAST_OPCODE        0x44cu
+#define NVME_FW_REG_AUTO_LAST_ERROR_INFO    0x450u
+#define NVME_FW_REG_AUTO_LAST_CQE_DW2       0x454u
+#define NVME_FW_REG_AUTO_CQ_IRQ_RETRY       0x458u
+#define NVME_FW_REG_AUTO_SW_DOORBELL        0x45cu
+#define NVME_FW_REG_AUTO_RETRY_CYCLES       0x460u
+#define NVME_FW_REG_SSD_MODEL_CTRL          0x464u
+#define NVME_FW_REG_SSD_READ_LSB_CYCLES     0x468u
+#define NVME_FW_REG_SSD_READ_MSB_CYCLES     0x46cu
+#define NVME_FW_REG_SSD_PROGRAM_CYCLES      0x470u
+#define NVME_FW_REG_SSD_FW_READ_CYCLES      0x474u
+#define NVME_FW_REG_SSD_FW_WRITE_CYCLES     0x478u
+#define NVME_FW_REG_SSD_CH_XFER_4K_CYCLES   0x47cu
+#define NVME_FW_REG_SSD_MODEL_STATUS        0x480u
+#define NVME_FW_REG_SSD_MODEL_SUBMIT_COUNT  0x484u
+#define NVME_FW_REG_SSD_MODEL_RELEASE_COUNT 0x488u
+
+#define NVME_FW_AUTO_MAGIC_VALUE             0xa710f001u
+#define NVME_FW_AUTO_CTRL_ENABLE             (1u << 0)
+#define NVME_FW_AUTO_CTRL_RESET              (1u << 1)
+#define NVME_FW_AUTO_CTRL_READ_ENABLE        (1u << 8)
+#define NVME_FW_AUTO_CTRL_WRITE_ENABLE       (1u << 9)
+#define NVME_FW_AUTO_CTRL_CQ_ENABLE          (1u << 10)
+#define NVME_FW_AUTO_CTRL_MSI_ENABLE         (1u << 11)
+#define NVME_FW_AUTO_STATUS_ENABLED          (1u << 0)
+#define NVME_FW_AUTO_STATUS_IDLE             (1u << 1)
+#define NVME_FW_AUTO_STATUS_ERROR            (1u << 8)
+#define NVME_FW_AUTO_STATUS_UNSUPPORTED      (1u << 9)
+#define NVME_FW_AUTO_STATUS_DMA_STALLED      (1u << 10)
+#define NVME_FW_AUTO_STATUS_BUSY             (1u << 16)
+#define NVME_FW_AUTO_STATUS_MSI_ENABLED      (1u << 17)
+#define NVME_FW_AUTO_STATUS_STATE_SHIFT      20
+#define NVME_FW_AUTO_STATUS_STATE_MASK       (0x1fu << NVME_FW_AUTO_STATUS_STATE_SHIFT)
+#define NVME_FW_SSD_MODEL_ENABLE             (1u << 0)
+#define NVME_FW_SSD_MODEL_RESET              (1u << 1)
 
 /* BAR2 host command/SQE mirror. */
 #define NVME_FW_SQE_BASE               0x10000u

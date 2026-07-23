@@ -42,6 +42,11 @@ module nvme_auto_io_engine # (
 	output	[(P_SLOT_TAG_WIDTH+2)+1:0]		hcmd_table_rd_addr,
 	input	[31:0]							hcmd_table_rd_data,
 
+	output									flush_cq_wr_en,
+	output	[(P_SLOT_TAG_WIDTH+28)-1:0]		flush_cq_wr_data0,
+	output	[(P_SLOT_TAG_WIDTH+28)-1:0]		flush_cq_wr_data1,
+	input									flush_cq_wr_rdy_n,
+
 	output									dma_cmd_wr_en,
 	output	[C_M_AXI_ADDR_WIDTH+23:0]		dma_cmd_wr_data0,
 	output	[C_M_AXI_ADDR_WIDTH+23:0]		dma_cmd_wr_data1,
@@ -80,12 +85,14 @@ localparam	S_RANGE_CHECK				= 5'd14;
 localparam	S_SUBMIT						= 5'd15;
 localparam	S_NEXT_SEG					= 5'd16;
 localparam	S_ERROR							= 5'd17;
+localparam	S_FLUSH_CPL					= 5'd18;
 
 localparam	DMA_TYPE_AUTO				= 1'b0;
 localparam	DMA_DIR_RX					= 1'b0;
 localparam	DMA_DIR_TX					= 1'b1;
 localparam	[12:2] DMA_LEN_4K			= 11'h400;
 localparam	[31:0] AUTO_CQ_MODE_HW		= 32'h00000000;
+localparam	[7:0] IO_NVM_FLUSH			= 8'h00;
 localparam	LP_LBA_WIDTH				= C_M_AXI_ADDR_WIDTH - 12;
 
 localparam	ERR_ADMIN_OR_MASKED_QID		= 32'h00000001;
@@ -130,6 +137,7 @@ wire	[8:0]							w_table_segments;
 wire									w_qid_enabled;
 wire									w_read_cmd;
 wire									w_write_cmd;
+wire									w_flush_cmd;
 wire									w_opcode_enabled;
 wire									w_nlb_supported;
 wire									w_cq_mode_supported;
@@ -171,7 +179,10 @@ assign w_table_segments = {1'b0, w_table_nlb[7:0]} + 9'd1;
 assign w_qid_enabled = (r_sq_qid != 4'h0) && (r_sq_qid <= 4'h8) && auto_io_enable_mask[r_sq_qid];
 assign w_read_cmd = (w_table_opcode == 8'h02);
 assign w_write_cmd = (w_table_opcode == 8'h01);
-assign w_opcode_enabled = (w_read_cmd & auto_io_read_enable) | (w_write_cmd & auto_io_write_enable);
+assign w_flush_cmd = (w_table_opcode == IO_NVM_FLUSH);
+assign w_opcode_enabled = w_flush_cmd |
+							 (w_read_cmd & auto_io_read_enable) |
+							 (w_write_cmd & auto_io_write_enable);
 assign w_nlb_supported = (w_table_nlb[15:8] == 8'h00);
 assign w_cq_mode_supported = (auto_cq_mode == AUTO_CQ_MODE_HW);
 assign w_start_lba = {r_slba_hi, r_slba_lo};
@@ -189,7 +200,7 @@ assign w_cmd_range_ok = (auto_ddr_limit >= auto_ddr_base) && w_lba_fits &&
 						(w_last_dev_addr >= w_start_dev_addr) &&
 						(w_last_dev_addr <= auto_ddr_limit);
 assign w_opcode_decode_error = (w_qid_enabled == 1'b0) ? ERR_ADMIN_OR_MASKED_QID :
-								((w_read_cmd | w_write_cmd) == 1'b0) ? ERR_UNSUPPORTED_OPCODE :
+								((w_read_cmd | w_write_cmd | w_flush_cmd) == 1'b0) ? ERR_UNSUPPORTED_OPCODE :
 								(w_opcode_enabled == 1'b0) ? ERR_DISABLED_OPCODE :
 								(auto_cq_enable == 1'b0) ? ERR_AUTO_CQ_DISABLED :
 								(w_cq_mode_supported == 1'b0) ? ERR_CQ_MODE_UNSUPPORTED :
@@ -217,6 +228,10 @@ assign hcmd_table_rd_active = w_opcode_addr_phase | w_nlb_addr_phase | w_slba_lo
 assign hcmd_table_rd_addr = (w_nlb_addr_phase == 1'b1) ? w_nlb_rd_addr :
 							(w_slba_lo_addr_phase == 1'b1) ? w_slba_lo_rd_addr :
 							(w_slba_hi_addr_phase == 1'b1) ? w_slba_hi_rd_addr : w_opcode_rd_addr;
+
+assign flush_cq_wr_en = (cur_state == S_FLUSH_CPL) & ~flush_cq_wr_rdy_n;
+assign flush_cq_wr_data0 = {26'b0, r_hcmd_slot_tag, 2'b01};
+assign flush_cq_wr_data1 = {(P_SLOT_TAG_WIDTH+28){1'b0}};
 
 assign dma_cmd_wr_en = w_submit_fire;
 assign dma_cmd_wr_data0 = {{(13-P_SLOT_TAG_WIDTH){1'b0}}, DMA_TYPE_AUTO, r_dma_dir,
@@ -268,8 +283,12 @@ begin
 			next_state <= S_OPCODE_DECODE;
 		end
 		S_OPCODE_DECODE: begin
-			if(w_opcode_decode_error == 32'h0)
-				next_state <= S_NLB_ADDR;
+			if(w_opcode_decode_error == 32'h0) begin
+				if(w_flush_cmd == 1'b1)
+					next_state <= S_FLUSH_CPL;
+				else
+					next_state <= S_NLB_ADDR;
+			end
 			else
 				next_state <= S_ERROR;
 		end
@@ -322,6 +341,12 @@ begin
 		end
 		S_ERROR: begin
 			next_state <= S_IDLE;
+		end
+		S_FLUSH_CPL: begin
+			if(flush_cq_wr_rdy_n == 1'b0)
+				next_state <= S_IDLE;
+			else
+				next_state <= S_FLUSH_CPL;
 		end
 		default: begin
 			next_state <= S_IDLE;

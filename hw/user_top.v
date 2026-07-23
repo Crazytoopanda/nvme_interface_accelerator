@@ -588,6 +588,14 @@ wire										w_hcmd_cq_wr1_en;
 wire	[(P_SLOT_TAG_WIDTH+28)-1:0]			w_hcmd_cq_wr1_data0; //slot_modified	
 wire	[(P_SLOT_TAG_WIDTH+28)-1:0]			w_hcmd_cq_wr1_data1; //slot_modified
 wire										w_hcmd_cq_wr1_rdy_n;
+wire										w_s0_hcmd_cq_wr1_en;
+wire	[(P_SLOT_TAG_WIDTH+28)-1:0]			w_s0_hcmd_cq_wr1_data0;
+wire	[(P_SLOT_TAG_WIDTH+28)-1:0]			w_s0_hcmd_cq_wr1_data1;
+wire										w_s0_hcmd_cq_wr1_rdy_n;
+wire										w_auto_hcmd_cq_wr1_en;
+wire	[(P_SLOT_TAG_WIDTH+28)-1:0]			w_auto_hcmd_cq_wr1_data0;
+wire	[(P_SLOT_TAG_WIDTH+28)-1:0]			w_auto_hcmd_cq_wr1_data1;
+wire										w_auto_hcmd_cq_wr1_rdy_n;
 
 wire										w_dma_cmd_wr_en;
 wire	[C_M0_AXI_ADDR_WIDTH+23:0]			w_dma_cmd_wr_data0; //modified
@@ -641,6 +649,13 @@ wire									w_model_cmd_wr_en;
 wire	[63:0]							w_model_cmd_wr_data0;
 wire	[63:0]							w_model_cmd_wr_data1;
 wire									w_model_cmd_wr_rdy_n;
+assign w_hcmd_cq_wr1_en = w_s0_hcmd_cq_wr1_en | w_auto_hcmd_cq_wr1_en;
+assign w_hcmd_cq_wr1_data0 = w_s0_hcmd_cq_wr1_en ?
+								w_s0_hcmd_cq_wr1_data0 : w_auto_hcmd_cq_wr1_data0;
+assign w_hcmd_cq_wr1_data1 = w_s0_hcmd_cq_wr1_en ?
+								w_s0_hcmd_cq_wr1_data1 : w_auto_hcmd_cq_wr1_data1;
+assign w_s0_hcmd_cq_wr1_rdy_n = w_hcmd_cq_wr1_rdy_n;
+assign w_auto_hcmd_cq_wr1_rdy_n = w_hcmd_cq_wr1_rdy_n | w_s0_hcmd_cq_wr1_en;
 
 wire										w_hcmd_sq_rd_en_mux;
 wire										w_dma_cmd_wr_en_mux;
@@ -954,6 +969,11 @@ nvme_auto_io_engine_inst0 (
 	.hcmd_table_rd_addr			(w_auto_hcmd_table_rd_addr),
 	.hcmd_table_rd_data			(w_hcmd_table_rd_data),
 
+	.flush_cq_wr_en				(w_auto_hcmd_cq_wr1_en),
+	.flush_cq_wr_data0			(w_auto_hcmd_cq_wr1_data0),
+	.flush_cq_wr_data1			(w_auto_hcmd_cq_wr1_data1),
+	.flush_cq_wr_rdy_n			(w_auto_hcmd_cq_wr1_rdy_n),
+
 	.dma_cmd_wr_en				(w_auto_dma_cmd_wr_en),
 	.dma_cmd_wr_data0			(w_auto_dma_cmd_wr_data0),
 	.dma_cmd_wr_data1			(w_auto_dma_cmd_wr_data1),
@@ -1100,10 +1120,10 @@ s_axi_top_inst0 (
 	.hcmd_table_rd_addr						(w_s0_hcmd_table_rd_addr),
 	.hcmd_table_rd_data						(w_hcmd_table_rd_data),
 
-	.hcmd_cq_wr1_en							(w_hcmd_cq_wr1_en),
-	.hcmd_cq_wr1_data0						(w_hcmd_cq_wr1_data0),
-	.hcmd_cq_wr1_data1						(w_hcmd_cq_wr1_data1),
-	.hcmd_cq_wr1_rdy_n						(w_hcmd_cq_wr1_rdy_n),
+	.hcmd_cq_wr1_en							(w_s0_hcmd_cq_wr1_en),
+	.hcmd_cq_wr1_data0						(w_s0_hcmd_cq_wr1_data0),
+	.hcmd_cq_wr1_data1						(w_s0_hcmd_cq_wr1_data1),
+	.hcmd_cq_wr1_rdy_n						(w_s0_hcmd_cq_wr1_rdy_n),
 
 	.dma_cmd_wr_en							(w_dma_cmd_wr_en),
 	.dma_cmd_wr_data0						(w_dma_cmd_wr_data0),

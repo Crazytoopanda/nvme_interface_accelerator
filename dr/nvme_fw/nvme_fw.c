@@ -63,7 +63,11 @@ MODULE_PARM_DESC(msi_threshold, "PF1 DMA-done MSI completion threshold");
 
 static bool run_firmware = true;
 module_param(run_firmware, bool, 0644);
-MODULE_PARM_DESC(run_firmware, "run firmware emulation in the PF1 kernel driver");
+MODULE_PARM_DESC(run_firmware, "run host firmware worker; disable when MicroBlaze auto_fw is active");
+
+static bool fw_use_auto_hw = true;
+module_param(fw_use_auto_hw, bool, 0644);
+MODULE_PARM_DESC(fw_use_auto_hw, "route enabled IO queues to the hardware automation engine");
 
 static uint fw_poll_us = 1;
 module_param(fw_poll_us, uint, 0644);
@@ -136,6 +140,18 @@ MODULE_PARM_DESC(fw_mgmt_dev_addr, "card DDR address used as firmware DMA stagin
 #define FW_NVME_BLOCK_BYTES                 4096ull
 #define FW_NVME_BLOCKS                      (FW_NVME_STORAGE_BYTES / FW_NVME_BLOCK_BYTES)
 
+#define FW_AUTO_DDR_BASE                    0x5040000000ull
+#define FW_AUTO_DDR_LIMIT                   (FW_AUTO_DDR_BASE + FW_NVME_STORAGE_BYTES - 1ull)
+#define FW_AUTO_IO_ENABLE_MASK              0x000001feu
+#define FW_AUTO_PF0_MSI_CTRL                0x00000101u
+#define FW_AUTO_CQ_IRQ_RETRY_CYCLES         4096u
+#define FW_SSD_READ_LSB_CYCLES              7440u
+#define FW_SSD_READ_MSB_CYCLES              10440u
+#define FW_SSD_PROGRAM_CYCLES               46250u
+#define FW_SSD_FW_READ_CYCLES               100u
+#define FW_SSD_FW_WRITE_CYCLES              200u
+#define FW_SSD_CH_XFER_4K_CYCLES            808u
+
 #define SCT_GENERIC_COMMAND_STATUS          0u
 #define SCT_COMMAND_SPECIFIC_STATUS         1u
 #define SC_SUCCESSFUL_COMPLETION            0x00u
@@ -188,6 +204,7 @@ struct nvme_fw_dev {
 	u32 last_cc_en;
 	u32 last_cc_shn;
 	enum fw_task_state task;
+	bool auto_hw_active;
 	unsigned long wait_reset_deadline;
 	bool zero_page_ready;
 };
@@ -218,6 +235,66 @@ static inline u32 fw_ctrl_off(u32 reg)
 static inline u32 fw_ring_off(u32 reg)
 {
 	return NVME_FW_RING_CTRL_BASE + reg;
+}
+
+static void fw_write64_regs(struct nvme_fw_dev *fw, u32 lo_reg, u64 value)
+{
+	fw_writel(fw, fw_ctrl_off(lo_reg), lower_32_bits(value));
+	fw_writel(fw, fw_ctrl_off(lo_reg + 4u), upper_32_bits(value));
+}
+
+static void fw_auto_hw_reset(struct nvme_fw_dev *fw)
+{
+	if (!fw->auto_hw_active)
+		return;
+	fw_writel(fw, fw_ctrl_off(NVME_FW_REG_AUTO_CTRL), NVME_FW_AUTO_CTRL_RESET);
+	fw_writel(fw, fw_ctrl_off(NVME_FW_REG_AUTO_CTRL), 0);
+	fw_writel(fw, fw_ctrl_off(NVME_FW_REG_SSD_MODEL_CTRL), NVME_FW_SSD_MODEL_RESET);
+	fw_writel(fw, fw_ctrl_off(NVME_FW_REG_SSD_MODEL_CTRL), 0);
+	fw_writel(fw, fw_ctrl_off(NVME_FW_REG_AUTO_ERROR), 0xffffffffu);
+}
+
+static void fw_auto_hw_configure(struct nvme_fw_dev *fw)
+{
+	if (!fw->auto_hw_active)
+		return;
+
+	fw_auto_hw_reset(fw);
+	fw_write64_regs(fw, NVME_FW_REG_AUTO_DDR_BASE_LO, FW_AUTO_DDR_BASE);
+	fw_write64_regs(fw, NVME_FW_REG_AUTO_DDR_LIMIT_LO, FW_AUTO_DDR_LIMIT);
+	fw_writel(fw, fw_ctrl_off(NVME_FW_REG_AUTO_IO_ENABLE_MASK),
+		  FW_AUTO_IO_ENABLE_MASK);
+	fw_writel(fw, fw_ctrl_off(NVME_FW_REG_AUTO_PF0_MSI_CTRL),
+		  FW_AUTO_PF0_MSI_CTRL);
+	fw_writel(fw, fw_ctrl_off(NVME_FW_REG_AUTO_CQ_MODE), 0);
+	fw_writel(fw, fw_ctrl_off(NVME_FW_REG_AUTO_RETRY_CYCLES),
+		  FW_AUTO_CQ_IRQ_RETRY_CYCLES);
+	fw_writel(fw, fw_ctrl_off(NVME_FW_REG_SSD_READ_LSB_CYCLES),
+		  FW_SSD_READ_LSB_CYCLES);
+	fw_writel(fw, fw_ctrl_off(NVME_FW_REG_SSD_READ_MSB_CYCLES),
+		  FW_SSD_READ_MSB_CYCLES);
+	fw_writel(fw, fw_ctrl_off(NVME_FW_REG_SSD_PROGRAM_CYCLES),
+		  FW_SSD_PROGRAM_CYCLES);
+	fw_writel(fw, fw_ctrl_off(NVME_FW_REG_SSD_FW_READ_CYCLES),
+		  FW_SSD_FW_READ_CYCLES);
+	fw_writel(fw, fw_ctrl_off(NVME_FW_REG_SSD_FW_WRITE_CYCLES),
+		  FW_SSD_FW_WRITE_CYCLES);
+	fw_writel(fw, fw_ctrl_off(NVME_FW_REG_SSD_CH_XFER_4K_CYCLES),
+		  FW_SSD_CH_XFER_4K_CYCLES);
+	fw_writel(fw, fw_ctrl_off(NVME_FW_REG_SSD_MODEL_CTRL),
+		  NVME_FW_SSD_MODEL_ENABLE);
+}
+
+static void fw_auto_hw_enable(struct nvme_fw_dev *fw)
+{
+	u32 ctrl = NVME_FW_AUTO_CTRL_ENABLE | NVME_FW_AUTO_CTRL_READ_ENABLE |
+		   NVME_FW_AUTO_CTRL_WRITE_ENABLE | NVME_FW_AUTO_CTRL_CQ_ENABLE |
+		   NVME_FW_AUTO_CTRL_MSI_ENABLE;
+
+	if (!fw->auto_hw_active)
+		return;
+	fw_writel(fw, fw_ctrl_off(NVME_FW_REG_AUTO_ERROR), 0xffffffffu);
+	fw_writel(fw, fw_ctrl_off(NVME_FW_REG_AUTO_CTRL), ctrl);
 }
 
 static inline u32 fw_desc_off(u8 index, u32 dword_off)
@@ -341,6 +418,9 @@ static void fw_probe_bar2_test(struct nvme_fw_dev *fw)
 		fw_probe_read_test(fw, "nvme_status", fw_ctrl_off(NVME_FW_REG_NVME_STATUS));
 		fw_probe_read_test(fw, "admin_queue", fw_ctrl_off(NVME_FW_REG_ADMIN_QUEUE));
 		fw_probe_read_test(fw, "cmd_fifo", fw_ctrl_off(NVME_FW_REG_CMD_FIFO));
+		fw_probe_read_test(fw, "auto_magic", fw_ctrl_off(NVME_FW_REG_AUTO_MAGIC));
+		fw_probe_read_test(fw, "auto_status", fw_ctrl_off(NVME_FW_REG_AUTO_STATUS));
+		fw_probe_read_test(fw, "auto_error", fw_ctrl_off(NVME_FW_REG_AUTO_ERROR));
 	}
 
 	if (level >= 3) {
@@ -362,11 +442,45 @@ static void fw_read_sqe(struct nvme_fw_dev *fw, u16 slot, u32 dword[16])
 		dword[i] = fw_readl(fw, off + i * sizeof(u32));
 }
 
+static bool fw_cmd_hw_owned(struct nvme_fw_dev *fw, u32 raw)
+{
+	u32 qid = raw & 0xfu;
+	u32 ctrl;
+	u32 mask;
+
+	if (!fw->auto_hw_active || !qid || qid > NVME_FW_MAX_IO_QUEUES)
+		return false;
+	ctrl = fw_readl(fw, fw_ctrl_off(NVME_FW_REG_AUTO_CTRL));
+	mask = fw_readl(fw, fw_ctrl_off(NVME_FW_REG_AUTO_IO_ENABLE_MASK));
+	return (ctrl & NVME_FW_AUTO_CTRL_ENABLE) && (mask & BIT(qid));
+}
+
+static bool fw_auto_hw_busy(struct nvme_fw_dev *fw)
+{
+	u32 ctrl;
+	u32 status;
+
+	if (!fw->auto_hw_active)
+		return false;
+	ctrl = fw_readl(fw, fw_ctrl_off(NVME_FW_REG_AUTO_CTRL));
+	status = fw_readl(fw, fw_ctrl_off(NVME_FW_REG_AUTO_STATUS));
+	return (ctrl & NVME_FW_AUTO_CTRL_ENABLE) &&
+	       (status & NVME_FW_AUTO_STATUS_BUSY);
+}
+
 static void fw_fetch_cmd(struct nvme_fw_dev *fw, struct nvme_fw_cmd *cmd)
 {
-	u32 reg = fw_readl(fw, fw_ctrl_off(NVME_FW_REG_CMD_FIFO));
+	u32 reg;
 
 	memset(cmd, 0, sizeof(*cmd));
+	if (fw->auto_hw_active) {
+		reg = fw_readl(fw, fw_ctrl_off(NVME_FW_REG_CMD_FIFO_PEEK));
+		if (!(reg & BIT(31)) || fw_cmd_hw_owned(fw, reg) ||
+		    fw_auto_hw_busy(fw))
+			return;
+	}
+
+	reg = fw_readl(fw, fw_ctrl_off(NVME_FW_REG_CMD_FIFO));
 	cmd->valid = (reg >> 31) & 0x1;
 	if (!cmd->valid)
 		return;
@@ -747,7 +861,7 @@ static int fw_post_completion(struct nvme_fw_dev *fw,
 	ret = fw_complete(fw, cpl);
 	if (ret)
 		return ret;
-	if (notify_pf0 && fw_enable_pf0_msi) {
+	if (notify_pf0 && fw_enable_pf0_msi && !fw->auto_hw_active) {
 		ret = fw_config_pf0_msi_vector(fw, vector);
 		if (ret)
 			return ret;
@@ -1348,6 +1462,7 @@ static int fw_firmware_enter_running(struct nvme_fw_dev *fw)
 {
 	fw_set_admin_queue(fw, 1, 1, 1);
 	fw_set_csts_rdy(fw, 1);
+	fw_auto_hw_enable(fw);
 	fw->task = FW_TASK_RUNNING;
 	dev_info(&fw->pdev->dev, "firmware worker: NVMe ready\n");
 	return 0;
@@ -1356,6 +1471,7 @@ static int fw_firmware_enter_running(struct nvme_fw_dev *fw)
 static int fw_firmware_shutdown(struct nvme_fw_dev *fw)
 {
 	fw_set_csts_shst(fw, 1);
+	fw_auto_hw_reset(fw);
 	fw_clear_io_queues(fw);
 	fw_set_admin_queue(fw, 0, 0, 0);
 	fw_set_csts_shst(fw, 2);
@@ -1368,6 +1484,7 @@ static int fw_firmware_shutdown(struct nvme_fw_dev *fw)
 
 static int fw_firmware_clear_for_rearm(struct nvme_fw_dev *fw)
 {
+	fw_auto_hw_configure(fw);
 	fw_set_status_fields(fw, 0, 0);
 	fw_set_admin_queue(fw, 0, 0, 0);
 	fw_clear_io_queues(fw);
@@ -1478,9 +1595,10 @@ static int fw_firmware_thread(void *data)
 	u32 poll_us;
 
 	dev_info(&fw->pdev->dev,
-		 "firmware worker: started poll_us=%u mgmt_dev_addr=0x%llx pf0_msi=%d dma_data=%d io_dma_data=%d auto_io_cpl=%d\n",
+		 "firmware worker: started poll_us=%u mgmt_dev_addr=0x%llx pf0_msi=%d dma_data=%d io_dma_data=%d auto_io_cpl=%d auto_hw=%d\n",
 		 fw_poll_us, fw_mgmt_dev_addr, fw_enable_pf0_msi,
-		 fw_enable_dma_data, fw_enable_io_dma_data, fw_auto_io_cpl);
+		 fw_enable_dma_data, fw_enable_io_dma_data, fw_auto_io_cpl,
+		 fw->auto_hw_active);
 	while (!kthread_should_stop()) {
 		int work = fw_firmware_poll(fw);
 
@@ -1767,6 +1885,15 @@ static int nvme_fw_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 	fw->pf0_msi_vector = ~0u;
 	fw->observed_disabled = true;
 	fw->task = FW_TASK_IDLE;
+	if (run_firmware && fw_use_auto_hw) {
+		u32 auto_magic = fw_readl(fw, fw_ctrl_off(NVME_FW_REG_AUTO_MAGIC));
+
+		fw->auto_hw_active = auto_magic == NVME_FW_AUTO_MAGIC_VALUE;
+		if (!fw->auto_hw_active)
+			dev_warn(&pdev->dev,
+				 "automation magic 0x%08x is incompatible; using software IO fallback\n",
+				 auto_magic);
+	}
 	fw_probe_bar2_test(fw);
 	if (probe_check_magic || probe_test_level >= 3) {
 		fw->last_pid_done = fw_readl(fw, fw_ring_off(NVME_FW_RING_PID_DONE));
@@ -1813,6 +1940,7 @@ static int nvme_fw_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 	if (auto_enable_pf0_msi)
 		fw_config_pf0_msi(fw, true, 0);
 	if (run_firmware) {
+		fw_firmware_clear_for_rearm(fw);
 		if (fw_enable_pf0_msi)
 			fw_config_pf0_msi_vector(fw, 0);
 		fw->fw_thread = kthread_run(fw_firmware_thread, fw,
@@ -1835,9 +1963,10 @@ static int nvme_fw_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 			dev_warn(&pdev->dev, "unexpected BAR2 debug magic 0x%08x\n", debug_magic);
 	}
 
-	dev_info(&pdev->dev, "mapped PF%d BAR2 at %pa, irq %d, busmaster=%d msi=%d probe_check_magic=%d probe_test_level=%d firmware=%d\n",
+	dev_info(&pdev->dev, "mapped PF%d BAR2 at %pa, irq %d, busmaster=%d msi=%d probe_check_magic=%d probe_test_level=%d firmware=%d auto_hw=%d\n",
 		 PCI_FUNC(pdev->devfn), &fw->bar2_start, fw->irq,
-		 enable_busmaster, use_msi, probe_check_magic, probe_test_level, run_firmware);
+		 enable_busmaster, use_msi, probe_check_magic, probe_test_level, run_firmware,
+		 fw->auto_hw_active);
 	return 0;
 
  destroy_device:
@@ -1874,6 +2003,12 @@ static void nvme_fw_remove(struct pci_dev *pdev)
 	if (fw->fw_thread) {
 		kthread_stop(fw->fw_thread);
 		fw->fw_thread = NULL;
+	}
+	if (run_firmware) {
+		fw_auto_hw_reset(fw);
+		fw_set_status_fields(fw, 0, 0);
+		fw_set_admin_queue(fw, 0, 0, 0);
+		fw_clear_io_queues(fw);
 	}
 
 	if (auto_enable_pf1_msi)

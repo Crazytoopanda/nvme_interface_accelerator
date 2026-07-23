@@ -20,6 +20,7 @@ static void usage(const char *prog)
 		"commands:\n"
 		"  info\n"
 		"  status\n"
+		"  auto-status\n"
 		"  read <offset>\n"
 		"  write <offset> <value>\n"
 		"  ready <0|1>\n"
@@ -106,6 +107,82 @@ static void print_status(int fd)
 	       st.pf1_msi_count, st.pf0_msi_count);
 }
 
+struct named_reg {
+	const char *name;
+	uint32_t offset;
+};
+
+static int print_auto_status(int fd)
+{
+	static const struct named_reg regs[] = {
+		{ "magic", NVME_FW_REG_AUTO_MAGIC },
+		{ "ctrl", NVME_FW_REG_AUTO_CTRL },
+		{ "status", NVME_FW_REG_AUTO_STATUS },
+		{ "error", NVME_FW_REG_AUTO_ERROR },
+		{ "ddr_base_lo", NVME_FW_REG_AUTO_DDR_BASE_LO },
+		{ "ddr_base_hi", NVME_FW_REG_AUTO_DDR_BASE_HI },
+		{ "ddr_limit_lo", NVME_FW_REG_AUTO_DDR_LIMIT_LO },
+		{ "ddr_limit_hi", NVME_FW_REG_AUTO_DDR_LIMIT_HI },
+		{ "io_enable_mask", NVME_FW_REG_AUTO_IO_ENABLE_MASK },
+		{ "cq_mode", NVME_FW_REG_AUTO_CQ_MODE },
+		{ "cmd_count", NVME_FW_REG_AUTO_CMD_COUNT },
+		{ "dma_submit_count", NVME_FW_REG_AUTO_DMA_SUBMIT_COUNT },
+		{ "dma_done_count", NVME_FW_REG_AUTO_DMA_DONE_COUNT },
+		{ "cq_write_count", NVME_FW_REG_AUTO_CQ_WRITE_COUNT },
+		{ "unsupported_count", NVME_FW_REG_AUTO_UNSUPPORTED_COUNT },
+		{ "last_qid_slot", NVME_FW_REG_AUTO_LAST_QID_SLOT },
+		{ "last_opcode", NVME_FW_REG_AUTO_LAST_OPCODE },
+		{ "last_error_info", NVME_FW_REG_AUTO_LAST_ERROR_INFO },
+		{ "manual_cq_irq_retry", NVME_FW_REG_AUTO_CQ_IRQ_RETRY },
+		{ "retry_cycles", NVME_FW_REG_AUTO_RETRY_CYCLES },
+		{ "model_ctrl", NVME_FW_REG_SSD_MODEL_CTRL },
+		{ "model_status", NVME_FW_REG_SSD_MODEL_STATUS },
+		{ "model_submit_count", NVME_FW_REG_SSD_MODEL_SUBMIT_COUNT },
+		{ "model_release_count", NVME_FW_REG_SSD_MODEL_RELEASE_COUNT },
+	};
+	uint32_t value[sizeof(regs) / sizeof(regs[0])];
+	uint32_t status;
+	uint32_t last;
+	uint32_t state;
+	uint32_t qid;
+	uint32_t slot;
+	uint32_t seq;
+	unsigned long long ddr_base;
+	unsigned long long ddr_limit;
+	size_t i;
+
+	for (i = 0; i < sizeof(regs) / sizeof(regs[0]); i++) {
+		if (read32_ioctl(fd, regs[i].offset, &value[i]) < 0) {
+			perror(regs[i].name);
+			exit(1);
+		}
+		printf("%-20s [0x%03x] = 0x%08x\n",
+		       regs[i].name, regs[i].offset, value[i]);
+	}
+
+	status = value[2];
+	last = value[15];
+	state = (status & NVME_FW_AUTO_STATUS_STATE_MASK) >>
+		NVME_FW_AUTO_STATUS_STATE_SHIFT;
+	qid = last & 0xfu;
+	slot = (last >> 4) & (NVME_FW_MAX_CMD_SLOTS - 1u);
+	seq = (last >> (4 + NVME_FW_SLOT_TAG_WIDTH)) & 0xffu;
+	ddr_base = ((unsigned long long)value[5] << 32) | value[4];
+	ddr_limit = ((unsigned long long)value[7] << 32) | value[6];
+
+	printf("compatible=%s state=%u enabled=%u idle=%u busy=%u stalled=%u msi=%u\n",
+	       value[0] == NVME_FW_AUTO_MAGIC_VALUE ? "yes" : "no",
+	       state,
+	       !!(status & NVME_FW_AUTO_STATUS_ENABLED),
+	       !!(status & NVME_FW_AUTO_STATUS_IDLE),
+	       !!(status & NVME_FW_AUTO_STATUS_BUSY),
+	       !!(status & NVME_FW_AUTO_STATUS_DMA_STALLED),
+	       !!(status & NVME_FW_AUTO_STATUS_MSI_ENABLED));
+	printf("ddr=[0x%016llx..0x%016llx] last_seq=%u last_slot=%u last_qid=%u opcode=0x%02x\n",
+	       ddr_base, ddr_limit, seq, slot, qid, value[16] & 0xffu);
+	return value[0] == NVME_FW_AUTO_MAGIC_VALUE ? 0 : -1;
+}
+
 static void fetch_cmd(int fd)
 {
 	struct nvme_fw_cmd cmd;
@@ -159,6 +236,11 @@ int main(int argc, char **argv)
 		print_info(fd);
 	} else if (!strcmp(cmd, "status")) {
 		print_status(fd);
+	} else if (!strcmp(cmd, "auto-status")) {
+		if (print_auto_status(fd) != 0) {
+			close(fd);
+			return 1;
+		}
 	} else if (!strcmp(cmd, "read")) {
 		uint32_t offset;
 		uint32_t value;

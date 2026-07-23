@@ -22,18 +22,31 @@ make -C dr/nvme_fw NVME_FW_DEBUG=1
 sudo insmod dr/nvme_fw/build/nvme_fw.ko debug=1
 ```
 
-Safe probe defaults:
+Default host-firmware mode:
 
 ```sh
 sudo insmod dr/nvme_fw/build/nvme_fw.ko
 ```
 
-By default the PF1 driver now only enables BAR2 memory, maps BAR2, and creates
-`/dev/nvme_fw<N>`. It does not allocate MSI, set PCI bus mastering, touch BAR2
-magic/status registers during probe, or auto-program BAR2 MSI registers. This is
-intentional so `insmod` is safe while the FPGA/PCIe path is being debugged.
+The default `run_firmware=1 fw_use_auto_hw=1` mode replaces MicroBlaze
+`auto_fw`. The PF1 kernel worker owns CC/CSTS lifecycle, admin commands, admin
+DMA, and IO queue setup. It configures the hardware automation and SSD latency
+registers, then leaves enabled IO QIDs in the command FIFO for hardware
+Read/Write/Flush, DMA, CQ write, and PF0 MSI processing.
 
-Opt-in probe parameters are available when the safe load is stable:
+The expected load log includes `firmware=1 auto_hw=1`. If `auto_hw=0`, the
+automation magic did not match and the worker falls back to the older software
+IO path.
+
+To use MicroBlaze `auto_fw` instead, select management-only mode explicitly:
+
+```sh
+sudo insmod dr/nvme_fw/build/nvme_fw.ko run_firmware=0
+```
+
+Never run both firmware owners. `run_firmware=1`, MicroBlaze `auto_fw`, and
+`nvme_fw_daemon --run` are mutually exclusive. Optional PCI settings remain
+available for targeted testing:
 
 ```sh
 sudo insmod dr/nvme_fw/build/nvme_fw.ko \
@@ -75,6 +88,9 @@ Level 2 additionally reads:
 - `0x200` NVMe status
 - `0x21c` admin queue control
 - `0x300` command FIFO
+- `0x400` automation magic
+- `0x408` automation status
+- `0x40c` automation error
 
 If level 2 survives, test the BAR2 DMA-ring control path:
 
@@ -89,20 +105,38 @@ BAR2 register that was about to be read.
 
 ## PF0 bring-up debug
 
-`nvme_fw` is only the PF1 BAR2 control driver; it does not by itself implement
-NVMe firmware. If PF0 reports `Device not ready; CSTS=0x0`, use the helper to
-check whether PF0 wrote `CC.EN` and to manually set `CSTS.RDY` for bring-up.
+With the default parameters, `nvme_fw` implements the host-resident firmware
+worker. If PF0 reports `Device not ready; CSTS=0x0`, verify that the loaded
+module reports `firmware=1 auto_hw=1`, then inspect CC/CSTS and automation state.
 
 ```sh
 make -C dr/nvme_fw
 sudo dr/nvme_fw/build/nvme_fw_ctl info
 sudo dr/nvme_fw/build/nvme_fw_ctl status
+sudo dr/nvme_fw/build/nvme_fw_ctl auto-status
 sudo dr/nvme_fw/build/nvme_fw_ctl read 0x200
 ```
+
+For a bitstream containing the current automation block, `auto-status` must
+report:
+
+```text
+magic                [0x400] = 0xa710f001
+compatible=yes
+```
+
+It also reports automation control/status/error, DDR range, command/DMA/CQ
+counters, the last QID/slot/opcode, CQ retry cycles, and SSD model counters.
+An all-ones value means the PF1 BAR2 request was not completed. A zero or
+unexpected magic means BAR2 is alive but the current automation register block
+is not present at offset `0x400`.
 
 `BAR2 + 0x200` readback bits include `CC.EN` at bit 0 and `CSTS.RDY` at bit 4.
 While loading PF0, if bit 0 becomes 1 and bit 4 stays 0, the firmware side has
 not marked the controller ready. For a manual smoke test:
+
+The `ready` command is only a low-level BAR smoke test. Do not use it while the
+kernel firmware worker or MicroBlaze `auto_fw` is active.
 
 ```sh
 sudo dr/nvme_fw/build/nvme_fw_ctl ready 0
@@ -114,18 +148,21 @@ After RDY is set, PF0 can move past controller-enable. Real NVMe initialization
 still needs firmware behavior: fetch admin SQEs, perform needed DMA/data setup,
 write completions, and trigger PF0 MSI.
 
-## Firmware daemon
+## Legacy host firmware daemon
 
 `nvme_fw_daemon` is the host-side replacement for the card firmware loop. It is
 structured after `fw/nvme/nvme_main.c`, but every register access goes through
 the PF1 BAR2 ABI in `nvme_fw_regs.h` instead of MicroBlaze `HOST_IP_ADDR`
-pointers.
+pointers. It is retained for host-only bring-up and must not run concurrently
+with MicroBlaze `auto_fw`.
 
-Run PF1 first, then the daemon, then PF0:
+The daemon defaults to open-only mode and performs no MSI or controller writes.
+For legacy host-owned firmware testing, first stop MicroBlaze firmware, then
+explicitly pass `--run`:
 
 ```sh
-sudo insmod dr/nvme_fw/build/nvme_fw.ko
-sudo dr/nvme_fw/build/nvme_fw_daemon
+sudo insmod dr/nvme_fw/build/nvme_fw.ko run_firmware=0
+sudo dr/nvme_fw/build/nvme_fw_daemon --run
 # another shell
 sudo insmod dr/nvme_on_host/build/nvme_on_host.ko
 ```
@@ -146,8 +183,27 @@ Implemented daemon flow:
   card-local `NVME_MANAGEMENT_START_ADDR`, then TX-DMAs to the host PRP.
 - Triggers PF0 MSI after completions.
 
-Current limitation:
+The daemon is retained only as a diagnostic alternative. It does not run with
+the default kernel firmware worker.
 
-Read/write IO still returns an internal-error completion. The next firmware port
-step is the `fw/nvme/ssd_model.c` scheduling path and auto DMA setup for IO
-commands.
+## Current hardware load sequence
+
+With the FPGA bitstream loaded and MicroBlaze stopped:
+
+```sh
+sudo insmod dr/nvme_fw/build/nvme_fw.ko
+sudo dr/nvme_fw/build/nvme_fw_ctl info
+sudo dr/nvme_fw/build/nvme_fw_ctl auto-status
+sudo insmod dr/nvme_on_host/build/nvme_on_host.ko
+```
+
+Expected ownership:
+
+- PF1 `nvme_fw.ko`: CC/CSTS lifecycle, admin commands and DMA, IO queue setup,
+  automation configuration, BAR2 diagnostics.
+- Hardware automation: normal Read/Write/Flush execution, data DMA, CQ writes,
+  SSD latency gating, and PF0 MSI.
+- PF0 `nvme_on_host.ko`: Linux NVMe host driver.
+- MicroBlaze `auto_fw`: stopped.
+
+For MicroBlaze-owned firmware, load PF1 with `run_firmware=0` instead.
