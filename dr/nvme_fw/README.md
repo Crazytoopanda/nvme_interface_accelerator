@@ -38,6 +38,58 @@ The expected load log includes `firmware=1 auto_hw=1`. If `auto_hw=0`, the
 automation magic did not match and the worker falls back to the older software
 IO path.
 
+### SSD latency-model control
+
+The SSD latency gate is independent of the hardware automation engine. Keep
+`fw_use_auto_hw=1` and set `fw_ssd_model_enable=0` to measure the unmodeled
+automation/PCIe datapath. This is the default:
+
+```sh
+sudo insmod dr/nvme_fw/build/nvme_fw.ko fw_ssd_model_enable=0
+```
+
+Enable the model explicitly after validating the unmodeled datapath:
+
+```sh
+sudo insmod dr/nvme_fw/build/nvme_fw.ko fw_ssd_model_enable=1
+```
+
+The default timing values use a 250 MHz PCIe user clock:
+
+| Parameter | Default cycles | Meaning |
+| --- | ---: | --- |
+| `fw_ssd_read_lsb_cycles` | 7440 | 4 KiB LSB NAND read latency |
+| `fw_ssd_read_msb_cycles` | 10440 | 4 KiB MSB NAND read latency |
+| `fw_ssd_program_cycles` | 46250 | NAND program latency |
+| `fw_ssd_fw_read_cycles` | 100 | Firmware read overhead |
+| `fw_ssd_fw_write_cycles` | 200 | Firmware write overhead |
+| `fw_ssd_ch_xfer_4k_cycles` | 808 | NAND channel transfer per 4 KiB |
+
+Values are module parameters, so no bitstream rebuild is required. They are
+written to the hardware only during the controller-disabled rearm sequence.
+Set them at module load, or change their sysfs values while PF0 is stopped and
+then force a normal controller disable/rearm. Do not retime an active queue.
+
+For example, the current integer conversion for 800 MiB/s per NAND channel is
+1216 cycles per 4 KiB:
+
+```sh
+sudo insmod dr/nvme_fw/build/nvme_fw.ko \
+  fw_ssd_model_enable=1 fw_ssd_ch_xfer_4k_cycles=1216
+```
+
+Verify the programmed values and enable bit with:
+
+```sh
+sudo dr/nvme_fw/build/nvme_fw_ctl auto-status
+```
+
+`model_ctrl=0` means latency gating is bypassed while automation remains
+enabled. `model_ctrl=1` means CQE publication waits for both DMA completion and
+the modeled deadline. The model therefore affects sustained throughput when
+queue depth cannot hide the deadline or when many requests serialize on the
+same modeled channel/LUN; it is not only a fixed CQE delay.
+
 To use MicroBlaze `auto_fw` instead, select management-only mode explicitly:
 
 ```sh

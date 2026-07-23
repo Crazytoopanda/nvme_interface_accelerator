@@ -24,6 +24,13 @@
 #define NVME_FW_DEBUG 0
 #endif
 
+#define FW_SSD_READ_LSB_CYCLES_DEFAULT       7440u
+#define FW_SSD_READ_MSB_CYCLES_DEFAULT       10440u
+#define FW_SSD_PROGRAM_CYCLES_DEFAULT        46250u
+#define FW_SSD_FW_READ_CYCLES_DEFAULT        100u
+#define FW_SSD_FW_WRITE_CYCLES_DEFAULT       200u
+#define FW_SSD_CH_XFER_4K_CYCLES_DEFAULT     808u
+
 static bool debug = NVME_FW_DEBUG;
 module_param(debug, bool, 0644);
 MODULE_PARM_DESC(debug, "enable verbose nvme_fw driver logs");
@@ -68,6 +75,41 @@ MODULE_PARM_DESC(run_firmware, "run host firmware worker; disable when MicroBlaz
 static bool fw_use_auto_hw = true;
 module_param(fw_use_auto_hw, bool, 0644);
 MODULE_PARM_DESC(fw_use_auto_hw, "route enabled IO queues to the hardware automation engine");
+
+static bool fw_ssd_model_enable = false;
+module_param(fw_ssd_model_enable, bool, 0644);
+MODULE_PARM_DESC(fw_ssd_model_enable,
+		 "enable hardware SSD latency gating; applied on controller rearm");
+
+static uint fw_ssd_read_lsb_cycles = FW_SSD_READ_LSB_CYCLES_DEFAULT;
+module_param(fw_ssd_read_lsb_cycles, uint, 0644);
+MODULE_PARM_DESC(fw_ssd_read_lsb_cycles,
+		 "SSD model 4 KiB LSB read latency in PCIe-user-clock cycles");
+
+static uint fw_ssd_read_msb_cycles = FW_SSD_READ_MSB_CYCLES_DEFAULT;
+module_param(fw_ssd_read_msb_cycles, uint, 0644);
+MODULE_PARM_DESC(fw_ssd_read_msb_cycles,
+		 "SSD model 4 KiB MSB read latency in PCIe-user-clock cycles");
+
+static uint fw_ssd_program_cycles = FW_SSD_PROGRAM_CYCLES_DEFAULT;
+module_param(fw_ssd_program_cycles, uint, 0644);
+MODULE_PARM_DESC(fw_ssd_program_cycles,
+		 "SSD model NAND program latency in PCIe-user-clock cycles");
+
+static uint fw_ssd_fw_read_cycles = FW_SSD_FW_READ_CYCLES_DEFAULT;
+module_param(fw_ssd_fw_read_cycles, uint, 0644);
+MODULE_PARM_DESC(fw_ssd_fw_read_cycles,
+		 "SSD model firmware read overhead in PCIe-user-clock cycles");
+
+static uint fw_ssd_fw_write_cycles = FW_SSD_FW_WRITE_CYCLES_DEFAULT;
+module_param(fw_ssd_fw_write_cycles, uint, 0644);
+MODULE_PARM_DESC(fw_ssd_fw_write_cycles,
+		 "SSD model firmware write overhead in PCIe-user-clock cycles");
+
+static uint fw_ssd_ch_xfer_4k_cycles = FW_SSD_CH_XFER_4K_CYCLES_DEFAULT;
+module_param(fw_ssd_ch_xfer_4k_cycles, uint, 0644);
+MODULE_PARM_DESC(fw_ssd_ch_xfer_4k_cycles,
+		 "SSD model NAND-channel transfer time per 4 KiB in PCIe-user-clock cycles");
 
 static uint fw_poll_us = 1;
 module_param(fw_poll_us, uint, 0644);
@@ -145,12 +187,6 @@ MODULE_PARM_DESC(fw_mgmt_dev_addr, "card DDR address used as firmware DMA stagin
 #define FW_AUTO_IO_ENABLE_MASK              0x000001feu
 #define FW_AUTO_PF0_MSI_CTRL                0x00000101u
 #define FW_AUTO_CQ_IRQ_RETRY_CYCLES         4096u
-#define FW_SSD_READ_LSB_CYCLES              7440u
-#define FW_SSD_READ_MSB_CYCLES              10440u
-#define FW_SSD_PROGRAM_CYCLES               46250u
-#define FW_SSD_FW_READ_CYCLES               100u
-#define FW_SSD_FW_WRITE_CYCLES              200u
-#define FW_SSD_CH_XFER_4K_CYCLES            808u
 
 #define SCT_GENERIC_COMMAND_STATUS          0u
 #define SCT_COMMAND_SPECIFIC_STATUS         1u
@@ -270,19 +306,19 @@ static void fw_auto_hw_configure(struct nvme_fw_dev *fw)
 	fw_writel(fw, fw_ctrl_off(NVME_FW_REG_AUTO_RETRY_CYCLES),
 		  FW_AUTO_CQ_IRQ_RETRY_CYCLES);
 	fw_writel(fw, fw_ctrl_off(NVME_FW_REG_SSD_READ_LSB_CYCLES),
-		  FW_SSD_READ_LSB_CYCLES);
+		  fw_ssd_read_lsb_cycles);
 	fw_writel(fw, fw_ctrl_off(NVME_FW_REG_SSD_READ_MSB_CYCLES),
-		  FW_SSD_READ_MSB_CYCLES);
+		  fw_ssd_read_msb_cycles);
 	fw_writel(fw, fw_ctrl_off(NVME_FW_REG_SSD_PROGRAM_CYCLES),
-		  FW_SSD_PROGRAM_CYCLES);
+		  fw_ssd_program_cycles);
 	fw_writel(fw, fw_ctrl_off(NVME_FW_REG_SSD_FW_READ_CYCLES),
-		  FW_SSD_FW_READ_CYCLES);
+		  fw_ssd_fw_read_cycles);
 	fw_writel(fw, fw_ctrl_off(NVME_FW_REG_SSD_FW_WRITE_CYCLES),
-		  FW_SSD_FW_WRITE_CYCLES);
+		  fw_ssd_fw_write_cycles);
 	fw_writel(fw, fw_ctrl_off(NVME_FW_REG_SSD_CH_XFER_4K_CYCLES),
-		  FW_SSD_CH_XFER_4K_CYCLES);
+		  fw_ssd_ch_xfer_4k_cycles);
 	fw_writel(fw, fw_ctrl_off(NVME_FW_REG_SSD_MODEL_CTRL),
-		  NVME_FW_SSD_MODEL_ENABLE);
+		  fw_ssd_model_enable ? NVME_FW_SSD_MODEL_ENABLE : 0);
 }
 
 static void fw_auto_hw_enable(struct nvme_fw_dev *fw)
@@ -1599,6 +1635,13 @@ static int fw_firmware_thread(void *data)
 		 fw_poll_us, fw_mgmt_dev_addr, fw_enable_pf0_msi,
 		 fw_enable_dma_data, fw_enable_io_dma_data, fw_auto_io_cpl,
 		 fw->auto_hw_active);
+	if (fw->auto_hw_active)
+		dev_info(&fw->pdev->dev,
+			 "firmware worker: SSD model enable=%d read_lsb=%u read_msb=%u program=%u fw_read=%u fw_write=%u ch_xfer_4k=%u cycles\n",
+			 fw_ssd_model_enable, fw_ssd_read_lsb_cycles,
+			 fw_ssd_read_msb_cycles, fw_ssd_program_cycles,
+			 fw_ssd_fw_read_cycles, fw_ssd_fw_write_cycles,
+			 fw_ssd_ch_xfer_4k_cycles);
 	while (!kthread_should_stop()) {
 		int work = fw_firmware_poll(fw);
 
