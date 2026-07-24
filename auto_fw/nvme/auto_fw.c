@@ -16,7 +16,7 @@
 #endif
 
 #ifndef AUTO_FW_STORAGE_BYTES
-#define AUTO_FW_STORAGE_BYTES               (63ULL * 1024ULL * 1024ULL * 1024ULL)
+#define AUTO_FW_STORAGE_BYTES               AUTO_FW_DDR_SIZE
 #endif
 
 #ifndef AUTO_FW_BLOCK_BYTES

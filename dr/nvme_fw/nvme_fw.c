@@ -98,6 +98,11 @@ static unsigned long long fw_mgmt_dev_addr = 0x5000200000ull;
 module_param(fw_mgmt_dev_addr, ullong, 0644);
 MODULE_PARM_DESC(fw_mgmt_dev_addr, "card DDR address used as firmware DMA staging area");
 
+static uint fw_storage_gib = 63;
+module_param(fw_storage_gib, uint, 0444);
+MODULE_PARM_DESC(fw_storage_gib,
+		 "NVMe namespace size in GiB; use 30 for one 32 GiB DIMM or 63 for two 32 GiB DIMMs");
+
 
 #define ADMIN_DELETE_IO_SQ                  0x00
 #define ADMIN_CREATE_IO_SQ                  0x01
@@ -137,12 +142,9 @@ MODULE_PARM_DESC(fw_mgmt_dev_addr, "card DDR address used as firmware DMA stagin
 
 #define FW_SHUTDOWN_REARM_MS                100u
 #define FW_DMA_WAIT_TIMEOUT_MS              2000u
-#define FW_NVME_STORAGE_BYTES               (63ull * 1024ull * 1024ull * 1024ull)
 #define FW_NVME_BLOCK_BYTES                 4096ull
-#define FW_NVME_BLOCKS                      (FW_NVME_STORAGE_BYTES / FW_NVME_BLOCK_BYTES)
 
 #define FW_AUTO_DDR_BASE                    0x5040000000ull
-#define FW_AUTO_DDR_LIMIT                   (FW_AUTO_DDR_BASE + FW_NVME_STORAGE_BYTES - 1ull)
 #define FW_AUTO_IO_ENABLE_MASK              0x000001feu
 #define FW_AUTO_PF0_MSI_CTRL                0x00000101u
 #define FW_AUTO_CQ_IRQ_RETRY_CYCLES         4096u
@@ -204,6 +206,21 @@ struct nvme_fw_dev {
 	bool zero_page_ready;
 };
 
+static u64 fw_storage_bytes(void)
+{
+	return (u64)READ_ONCE(fw_storage_gib) << 30;
+}
+
+static u64 fw_storage_blocks(void)
+{
+	return fw_storage_bytes() / FW_NVME_BLOCK_BYTES;
+}
+
+static u64 fw_auto_ddr_limit(void)
+{
+	return FW_AUTO_DDR_BASE + fw_storage_bytes() - 1ull;
+}
+
 static dev_t nvme_fw_devt;
 static struct class *nvme_fw_class;
 static DEFINE_IDA(nvme_fw_minors);
@@ -255,7 +272,8 @@ static void fw_auto_hw_configure(struct nvme_fw_dev *fw)
 
 	fw_auto_hw_reset(fw);
 	fw_write64_regs(fw, NVME_FW_REG_AUTO_DDR_BASE_LO, FW_AUTO_DDR_BASE);
-	fw_write64_regs(fw, NVME_FW_REG_AUTO_DDR_LIMIT_LO, FW_AUTO_DDR_LIMIT);
+	fw_write64_regs(fw, NVME_FW_REG_AUTO_DDR_LIMIT_LO,
+			fw_auto_ddr_limit());
 	fw_writel(fw, fw_ctrl_off(NVME_FW_REG_AUTO_IO_ENABLE_MASK),
 		  FW_AUTO_IO_ENABLE_MASK);
 	fw_writel(fw, fw_ctrl_off(NVME_FW_REG_AUTO_PF0_MSI_CTRL),
@@ -700,7 +718,7 @@ static void fw_fill_identify_controller(u8 *buf)
 	buf[75] = 0x5c;
 	buf[77] = 0x8;
 	fw_put_le16(buf, 78, 0x9);
-	fw_put_le64(buf, 280, FW_NVME_STORAGE_BYTES);
+	fw_put_le64(buf, 280, fw_storage_bytes());
 	buf[258] = 0x3;
 	buf[259] = 0x3;
 	buf[260] = 0x3;
@@ -715,9 +733,9 @@ static void fw_fill_identify_controller(u8 *buf)
 static void fw_fill_identify_namespace(u8 *buf)
 {
 	memset(buf, 0, NVME_FW_STAGE_SIZE);
-	fw_put_le64(buf, 0, FW_NVME_BLOCKS);
-	fw_put_le64(buf, 8, FW_NVME_BLOCKS);
-	fw_put_le64(buf, 16, FW_NVME_BLOCKS);
+	fw_put_le64(buf, 0, fw_storage_blocks());
+	fw_put_le64(buf, 8, fw_storage_blocks());
+	fw_put_le64(buf, 16, fw_storage_blocks());
 	buf[25] = 0x0;
 	buf[26] = 0x0;
 	fw_put_le16(buf, 128, 0x0);
@@ -1828,6 +1846,12 @@ static int nvme_fw_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 
 	if (target_function >= 0 && PCI_FUNC(pdev->devfn) != target_function)
 		return -ENODEV;
+	if (!fw_storage_gib || fw_storage_gib > 63) {
+		dev_err(&pdev->dev,
+			"fw_storage_gib=%u is invalid; expected 1..63\n",
+			fw_storage_gib);
+		return -EINVAL;
+	}
 
 	ret = pci_enable_device_mem(pdev);
 	if (ret)
@@ -1868,6 +1892,9 @@ static int nvme_fw_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 	fw->pf0_msi_vector = ~0u;
 	fw->observed_disabled = true;
 	fw->task = FW_TASK_IDLE;
+	dev_info(&pdev->dev,
+		 "namespace=%u GiB ddr=[0x%llx..0x%llx]\n",
+		 fw_storage_gib, FW_AUTO_DDR_BASE, fw_auto_ddr_limit());
 	if (run_firmware && fw_use_auto_hw) {
 		u32 auto_magic = fw_readl(fw, fw_ctrl_off(NVME_FW_REG_AUTO_MAGIC));
 

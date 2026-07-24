@@ -38,6 +38,27 @@ The expected load log includes `firmware=1 auto_hw=1`. If `auto_hw=0`, the
 automation magic did not match and the worker falls back to the older software
 IO path.
 
+### Namespace capacity
+
+`nvme_fw` must not advertise more namespace storage than the populated PL DDR.
+The default is 30 GiB for the single-DIMM 32 GiB design, leaving the low DDR
+management region outside the namespace:
+
+```sh
+sudo insmod dr/nvme_fw/build/nvme_fw.ko fw_storage_gib=30
+```
+
+For the dual-DIMM 64 GiB design, select the 63 GiB namespace explicitly:
+
+```sh
+sudo insmod dr/nvme_fw/build/nvme_fw.ko fw_storage_gib=63
+```
+
+The parameter sets both Identify Namespace capacity and
+`AUTO_REG_DDR_LIMIT`. A mismatch can issue AXI DMA beyond populated DDR; the
+DMA then never completes and Linux reports an I/O timeout followed by a
+controller reset.
+
 ### SSD latency-model control
 
 The Samsung 970 PRO profile and its nanosecond-to-cycle conversion are defined
