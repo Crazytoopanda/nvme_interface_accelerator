@@ -145,6 +145,7 @@ static int print_auto_status(int fd)
 		{ "model_status", NVME_FW_REG_SSD_MODEL_STATUS },
 		{ "model_submit_count", NVME_FW_REG_SSD_MODEL_SUBMIT_COUNT },
 		{ "model_release_count", NVME_FW_REG_SSD_MODEL_RELEASE_COUNT },
+		{ "model_channel_count", NVME_FW_REG_SSD_CHANNEL_COUNT },
 	};
 	uint32_t value[sizeof(regs) / sizeof(regs[0])];
 	uint32_t status;

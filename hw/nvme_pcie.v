@@ -196,6 +196,7 @@ module nvme_pcie # (
 	input	[31:0]						ssd_fw_read_cycles,
 	input	[31:0]						ssd_fw_write_cycles,
 	input	[31:0]						ssd_ch_xfer_4k_cycles,
+	input	[4:0]						ssd_channel_count,
 	output	[31:0]						ssd_model_status,
 	output	[31:0]						ssd_model_submit_count,
 	output	[31:0]						ssd_model_release_count,
@@ -676,6 +677,7 @@ nvme_ssd_latency_inst0 (
 	.fw_read_cycles(ssd_fw_read_cycles),
 	.fw_write_cycles(ssd_fw_write_cycles),
 	.ch_xfer_4k_cycles(ssd_ch_xfer_4k_cycles),
+	.channel_count(ssd_channel_count),
 
 	.in_cq_wr_en(w_dma_hcmd_cq_wr0_en),
 	.in_cq_wr_data0(w_dma_hcmd_cq_wr0_data0),

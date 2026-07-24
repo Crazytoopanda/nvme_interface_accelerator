@@ -123,10 +123,10 @@ assign s_axi_rdata = r_rdata;
 assign s_axi_rresp = 2'b00;
 assign s_axi_rlast = w_rd_last_beat;
 
-assign s_axi_awready = (r_wr_state == LP_WR_IDLE);
+assign s_axi_awready = (r_wr_state == LP_WR_IDLE) && (r_dma_cmd_wr_en == 0);
 assign s_axi_wready = (r_wr_state == LP_WR_DATA) &&
 					  ((r_wr_packed_dma == 0) || (r_dma_cmd_sent == 1) ||
-					   (w_dma_payload_complete == 0) || (dma_cmd_wr_rdy_n == 0));
+					   (w_dma_payload_complete == 0) || (r_dma_cmd_wr_en == 0));
 assign s_axi_bid = r_awid;
 assign s_axi_bresp = r_bresp;
 assign s_axi_bvalid = (r_wr_state == LP_WR_RESP);
@@ -273,10 +273,11 @@ begin
 		r_awburst <= 0;
 	end
 	else begin
-		r_dma_cmd_wr_en <= 0;
+		if((r_dma_cmd_wr_en == 1) && (dma_cmd_wr_rdy_n == 0))
+			r_dma_cmd_wr_en <= 0;
 		case(r_wr_state)
 			LP_WR_IDLE: begin
-				if(s_axi_awvalid == 1) begin
+				if((s_axi_awvalid == 1) && (s_axi_awready == 1)) begin
 					r_awid <= s_axi_awid;
 					r_bresp <= 2'b00;
 					r_wr_packed_dma <= w_aw_packed_dma;

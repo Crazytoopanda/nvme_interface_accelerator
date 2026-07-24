@@ -227,6 +227,7 @@ module s_axi_reg # (
 	output	[31:0]						ssd_fw_read_cycles,
 	output	[31:0]						ssd_fw_write_cycles,
 	output	[31:0]						ssd_ch_xfer_4k_cycles,
+	output	[4:0]						ssd_channel_count,
 	input	[31:0]						ssd_model_status,
 	input	[31:0]						ssd_model_submit_count,
 	input	[31:0]						ssd_model_release_count,
@@ -511,6 +512,7 @@ reg		[31:0]								r_ssd_program_cycles;
 reg		[31:0]								r_ssd_fw_read_cycles;
 reg		[31:0]								r_ssd_fw_write_cycles;
 reg		[31:0]								r_ssd_ch_xfer_4k_cycles;
+reg		[4:0]								r_ssd_channel_count;
 reg										r_ssd_model_reset_pulse;
 reg		[31:0]								r_auto_error_clear;
 reg										r_auto_reset_pulse;
@@ -675,6 +677,7 @@ assign ssd_program_cycles = r_ssd_program_cycles;
 assign ssd_fw_read_cycles = r_ssd_fw_read_cycles;
 assign ssd_fw_write_cycles = r_ssd_fw_write_cycles;
 assign ssd_ch_xfer_4k_cycles = r_ssd_ch_xfer_4k_cycles;
+assign ssd_channel_count = r_ssd_channel_count;
 assign auto_error_clear = r_auto_error_clear;
 assign w_auto_cq_irq_retry_cqid = w_reg_wdata[7:4];
 assign w_auto_cq_irq_retry_wr = w_auto_reg_en & (w_reg_wr_addr[7:2] == 6'h16) &
@@ -898,7 +901,10 @@ begin
 				next_wr_state <= S_WR_DMA;
 		end
 		S_WR_DMA: begin
-			next_wr_state <= S_WR_IDLE;
+			if(dma_cmd_wr_rdy_n == 1)
+				next_wr_state <= S_WR_DMA;
+			else
+				next_wr_state <= S_WR_IDLE;
 		end
 		default: begin
 			next_wr_state <= S_WR_IDLE;
@@ -1670,6 +1676,7 @@ begin
 			r_ssd_fw_read_cycles <= 32'd100;
 			r_ssd_fw_write_cycles <= 32'd200;
 			r_ssd_ch_xfer_4k_cycles <= 32'd808;
+			r_ssd_channel_count <= 5'd8;
 			r_ssd_model_reset_pulse <= 0;
 		r_auto_error_clear <= 0;
 		r_auto_reset_pulse <= 0;
@@ -1707,6 +1714,13 @@ begin
 					6'h1D: r_ssd_fw_read_cycles <= w_reg_wdata;
 					6'h1E: r_ssd_fw_write_cycles <= w_reg_wdata;
 					6'h1F: r_ssd_ch_xfer_4k_cycles <= w_reg_wdata;
+					6'h23: begin
+						case(w_reg_wdata[4:0])
+						5'd1, 5'd2, 5'd4, 5'd8, 5'd16:
+							r_ssd_channel_count <= w_reg_wdata[4:0];
+						default: r_ssd_channel_count <= 5'd8;
+						endcase
+					end
 			endcase
 		end
 	end
@@ -1956,6 +1970,7 @@ begin
 			6'h20: r_auto_reg_rdata = ssd_model_status;
 			6'h21: r_auto_reg_rdata = ssd_model_submit_count;
 			6'h22: r_auto_reg_rdata = ssd_model_release_count;
+			6'h23: r_auto_reg_rdata = {27'b0, r_ssd_channel_count};
 	endcase
 end
 

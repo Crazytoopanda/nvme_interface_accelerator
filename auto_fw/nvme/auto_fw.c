@@ -251,14 +251,17 @@ static int auto_fw_wait_auto_dma_credit(uint32_t dir)
 static int auto_fw_wait_direct_tx_done(void)
 {
 	uint32_t i;
+	uint32_t head = 0U;
 
 	for(i = 0; i < AUTO_FW_DMA_WAIT_LIMIT; i++) {
-		uint32_t head = auto_fw_dma_head_word();
+		head = auto_fw_dma_head_word();
 
 		if(auto_fw_head_direct_tx(head) == g_auto_fw.direct_tx_tail)
 			return 0;
 	}
 
+	xil_printf("auto_fw: direct TX DMA timeout expected_tail=%u observed_head=%u raw_head=0x%08x\r\n",
+		   g_auto_fw.direct_tx_tail, auto_fw_head_direct_tx(head), head);
 	return -1;
 }
 
@@ -831,8 +834,15 @@ static int auto_fw_handle_identify(const struct auto_fw_cmd *cmd,
 		return 0;
 	}
 	if(auto_fw_dma_stage_to_prp(AUTO_FW_STAGE_SIZE, auto_fw_cmd_prp1(cmd),
-				      auto_fw_cmd_prp2(cmd)) != 0)
+				      auto_fw_cmd_prp2(cmd)) != 0) {
+		xil_printf("auto_fw: Identify DMA failed cns=0x%x cid=%u prp1=%08x_%08x prp2=%08x_%08x\r\n",
+			   cns, auto_fw_cmd_cid(cmd),
+			   auto_fw_upper32(auto_fw_cmd_prp1(cmd)),
+			   auto_fw_lower32(auto_fw_cmd_prp1(cmd)),
+			   auto_fw_upper32(auto_fw_cmd_prp2(cmd)),
+			   auto_fw_lower32(auto_fw_cmd_prp2(cmd)));
 		*status = auto_fw_cpl_internal_error();
+	}
 	return 0;
 }
 
@@ -1012,6 +1022,7 @@ static void auto_hw_configure(void)
 		       (uint32_t)AUTO_FW_SSD_FW_WRITE_CYCLES);
 	auto_reg_write(AUTO_REG_SSD_CH_XFER_4K_CYCLES,
 		       (uint32_t)AUTO_FW_SSD_CH_XFER_4K_CYCLES);
+	auto_reg_write(AUTO_REG_SSD_CHANNEL_COUNT, (uint32_t)NAND_CHANNELS);
 	auto_reg_write(AUTO_REG_SSD_MODEL_CTRL, AUTO_FW_SSD_MODEL_ENABLE ? AUTO_SSD_MODEL_ENABLE : 0U);
 }
 

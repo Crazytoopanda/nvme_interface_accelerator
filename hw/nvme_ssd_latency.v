@@ -30,6 +30,7 @@ module nvme_ssd_latency #(
 	input      [31:0]                  fw_read_cycles,
 	input      [31:0]                  fw_write_cycles,
 	input      [31:0]                  ch_xfer_4k_cycles,
+	input      [4:0]                   channel_count,
 
 	input                              in_cq_wr_en,
 	input      [P_CQ_DATA_WIDTH-1:0]   in_cq_wr_data0,
@@ -70,8 +71,8 @@ reg  [63:0] r_channel_start_q;
 reg  [63:0] r_channel_done_q;
 reg  [63:0] r_segment_done_q;
 
-(* ram_style = "block" *) reg [63:0] r_lane_avail [0:255];
-reg  [63:0] r_ch_avail [0:7];
+(* ram_style = "block" *) reg [63:0] r_lane_avail [0:511];
+reg  [63:0] r_ch_avail [0:15];
 (* ram_style = "block" *) reg [63:0] r_due_bank0 [0:(1<<P_SCAN_ROW_WIDTH)-1];
 (* ram_style = "block" *) reg [63:0] r_due_bank1 [0:(1<<P_SCAN_ROW_WIDTH)-1];
 (* ram_style = "block" *) reg [63:0] r_due_bank2 [0:(1<<P_SCAN_ROW_WIDTH)-1];
@@ -80,7 +81,7 @@ reg  [63:0] r_ch_avail [0:7];
 (* ram_style = "block" *) reg [63:0] r_due_bank5 [0:(1<<P_SCAN_ROW_WIDTH)-1];
 (* ram_style = "block" *) reg [63:0] r_due_bank6 [0:(1<<P_SCAN_ROW_WIDTH)-1];
 (* ram_style = "block" *) reg [63:0] r_due_bank7 [0:(1<<P_SCAN_ROW_WIDTH)-1];
-reg  [255:0] r_lane_valid;
+reg  [511:0] r_lane_valid;
 reg  [(1<<P_SLOT_TAG_WIDTH)-1:0] r_due_valid;
 reg  [(1<<P_SLOT_TAG_WIDTH)-1:0] r_dma_pending;
 
@@ -105,14 +106,19 @@ reg [31:0]  r_program_s1, r_program_s2;
 reg [31:0]  r_fw_read_s1, r_fw_read_s2;
 reg [31:0]  r_fw_write_s1, r_fw_write_s2;
 reg [31:0]  r_ch_xfer_s1, r_ch_xfer_s2;
+reg [4:0]   r_channel_count_s1, r_channel_count_s2;
 
 wire [P_SLOT_TAG_WIDTH-1:0] w_in_slot;
 wire [63:0] w_seg_lba;
 wire [63:0] w_page;
-wire [2:0]  w_channel;
+reg  [3:0]  r_channel;
+reg  [4:0]  r_lun;
+wire [3:0]  w_channel;
 wire [4:0]  w_lun;
-wire [7:0]  w_lane;
+wire [8:0]  w_lane;
 wire        w_msb;
+wire        w_program_ready;
+wire        w_lane_commit;
 wire [63:0] w_fw_start;
 wire [63:0] w_nand_start;
 wire [63:0] w_nand_done;
@@ -120,6 +126,12 @@ wire [63:0] w_channel_start;
 wire [63:0] w_channel_done;
 wire [63:0] w_program_done;
 wire [63:0] w_segment_done;
+wire [8:0]  w_segments_remaining;
+wire [2:0]  w_read_page_remaining;
+wire [2:0]  w_read_group_segments;
+wire [8:0]  w_segment_advance;
+wire [63:0] w_ch_xfer_4k;
+wire [63:0] w_read_xfer_cycles;
 wire        w_last_segment;
 
 integer bank;
@@ -129,20 +141,48 @@ assign w_in_slot = in_cq_wr_data0[P_SLOT_TAG_WIDTH+1:2];
 assign w_seg_lba = r_cmd_slba + r_segment;
 /* The current namespace and DMA engine use 4 KiB logical blocks. */
 assign w_page = w_seg_lba >> 2;
-assign w_channel = w_page[2:0];
-assign w_lun = w_page[7:3];
+always @(*) begin
+	case(r_channel_count_s2)
+	5'd1: begin r_channel = 4'd0; r_lun = w_page[4:0]; end
+	5'd2: begin r_channel = {3'b0, w_page[0]}; r_lun = w_page[5:1]; end
+	5'd4: begin r_channel = {2'b0, w_page[1:0]}; r_lun = w_page[6:2]; end
+	5'd16: begin r_channel = w_page[3:0]; r_lun = w_page[8:4]; end
+	default: begin r_channel = {1'b0, w_page[2:0]}; r_lun = w_page[7:3]; end
+	endcase
+end
+assign w_channel = r_channel;
+assign w_lun = r_lun;
 assign w_lane = {w_lun, w_channel};
-assign w_msb = w_page[8];
+assign w_msb = w_seg_lba[0];
+assign w_program_ready = (w_seg_lba[1:0] == 2'b11);
+assign w_lane_commit = !r_cmd_write || w_program_ready;
+assign w_segments_remaining = r_cmd_segments - r_segment;
+assign w_read_page_remaining = 3'd4 - {1'b0, w_seg_lba[1:0]};
+assign w_read_group_segments =
+	(w_segments_remaining < {6'b0, w_read_page_remaining}) ?
+	w_segments_remaining[2:0] : w_read_page_remaining;
+assign w_segment_advance = r_cmd_write ? 9'd1 :
+			    {6'b0, w_read_group_segments};
+assign w_ch_xfer_4k = {32'b0, r_ch_xfer_s2};
+assign w_read_xfer_cycles =
+	(w_read_group_segments == 3'd4) ? (w_ch_xfer_4k << 2) :
+	(w_read_group_segments == 3'd3) ? ((w_ch_xfer_4k << 1) + w_ch_xfer_4k) :
+	(w_read_group_segments == 3'd2) ? (w_ch_xfer_4k << 1) :
+					 w_ch_xfer_4k;
 assign w_fw_start = r_time + (r_cmd_write ? r_fw_write_s2 : r_fw_read_s2);
 assign w_nand_start = (r_lane_valid_q && (r_lane_avail_q > w_fw_start)) ?
 			      r_lane_avail_q : w_fw_start;
 assign w_nand_done = w_nand_start + (w_msb ? r_read_msb_s2 : r_read_lsb_s2);
 assign w_channel_start = r_cmd_write ? w_nand_start : w_nand_done;
 assign w_channel_done = ((r_ch_avail_q > r_channel_start_q) ?
-			 r_ch_avail_q : r_channel_start_q) + r_ch_xfer_s2;
+			 r_ch_avail_q : r_channel_start_q) +
+			(r_cmd_write ? (w_ch_xfer_4k << 2) :
+				       w_read_xfer_cycles);
 assign w_program_done = r_channel_done_q + r_program_s2;
-assign w_segment_done = r_cmd_write ? w_program_done : r_channel_done_q;
-assign w_last_segment = (r_segment + 9'd1) >= r_cmd_segments;
+assign w_segment_done = r_cmd_write ?
+			(w_program_ready ? w_program_done : w_fw_start) :
+			r_channel_done_q;
+assign w_last_segment = (r_segment + w_segment_advance) >= r_cmd_segments;
 
 nvme_model_async_fifo model_metadata_fifo (
 	.wr_clk(cpu_bus_clk),
@@ -177,7 +217,7 @@ end
 always @(posedge pcie_user_clk) begin
 	if(r_model_state == M_LOAD)
 		r_lane_avail_q <= r_lane_avail[w_lane];
-	if(!r_model_reset_s2 && (r_model_state == M_COMMIT))
+	if(!r_model_reset_s2 && (r_model_state == M_COMMIT) && w_lane_commit)
 		r_lane_avail[w_lane] <= r_segment_done_q;
 
 	r_scan_due_q[0] <= r_due_bank0[r_scan_index];
@@ -232,6 +272,8 @@ always @(posedge pcie_user_clk or negedge pcie_user_rst_n) begin
 		r_fw_write_s2 <= 0;
 		r_ch_xfer_s1 <= 0;
 		r_ch_xfer_s2 <= 0;
+		r_channel_count_s1 <= 5'd8;
+		r_channel_count_s2 <= 5'd8;
 	end else begin
 		r_model_enable_s1 <= model_enable;
 		r_model_enable_s2 <= r_model_enable_s1;
@@ -249,6 +291,8 @@ always @(posedge pcie_user_clk or negedge pcie_user_rst_n) begin
 		r_fw_write_s2 <= r_fw_write_s1;
 		r_ch_xfer_s1 <= ch_xfer_4k_cycles;
 		r_ch_xfer_s2 <= r_ch_xfer_s1;
+		r_channel_count_s1 <= channel_count;
+		r_channel_count_s2 <= r_channel_count_s1;
 	end
 end
 
@@ -278,7 +322,7 @@ always @(posedge pcie_user_clk or negedge pcie_user_rst_n) begin
 		r_out_slot <= 0;
 		r_submit_count <= 0;
 		r_release_count <= 0;
-		for(idx = 0; idx < 8; idx = idx + 1)
+		for(idx = 0; idx < 16; idx = idx + 1)
 			r_ch_avail[idx] <= 0;
 	end else begin
 		r_time <= r_time + 1;
@@ -304,7 +348,7 @@ always @(posedge pcie_user_clk or negedge pcie_user_rst_n) begin
 			r_out_valid <= 0;
 			r_submit_count <= 0;
 			r_release_count <= 0;
-			for(idx = 0; idx < 8; idx = idx + 1)
+			for(idx = 0; idx < 16; idx = idx + 1)
 				r_ch_avail[idx] <= 0;
 		end else begin
 			if(r_model_enable_s2 && in_cq_wr_en && !in_cq_wr_rdy_n)
@@ -352,15 +396,17 @@ always @(posedge pcie_user_clk or negedge pcie_user_rst_n) begin
 				r_model_state <= M_COMMIT;
 			end
 			M_COMMIT: begin
-				r_ch_avail[w_channel] <= r_channel_done_q;
-				r_lane_valid[w_lane] <= 1'b1;
+				if(w_lane_commit) begin
+					r_ch_avail[w_channel] <= r_channel_done_q;
+					r_lane_valid[w_lane] <= 1'b1;
+				end
 				r_cmd_due <= w_cmd_due_final;
 				if(w_last_segment) begin
 					r_due_valid[r_cmd_slot] <= 1'b1;
 					r_submit_count <= r_submit_count + 1'b1;
 					r_model_state <= M_IDLE;
 				end else begin
-					r_segment <= r_segment + 1'b1;
+					r_segment <= r_segment + w_segment_advance;
 					r_model_state <= M_LOAD;
 				end
 			end

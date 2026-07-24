@@ -10,6 +10,7 @@ reg cpu_rst_n = 0;
 reg pcie_rst_n = 0;
 reg model_enable = 0;
 reg model_reset = 0;
+reg [4:0] channel_count = 5'd8;
 reg meta_en = 0;
 reg [63:0] meta0 = 0;
 reg [63:0] meta1 = 0;
@@ -30,11 +31,17 @@ integer pcie_cycles = 0;
 integer submit_cycle = 0;
 integer release_cycle = 0;
 integer first_release_latency = 0;
+integer buffered_write_submit_cycle = 0;
+integer buffered_write_release_latency = 0;
 integer write_submit_cycle = 0;
 integer write_release_latency = 0;
+integer page_read_submit_cycle = 0;
+integer page_read_release_latency = 0;
 reg [63:0] first_due;
 reg [63:0] parallel_due0;
 reg [63:0] parallel_due1;
+reg [63:0] channel16_due0;
+reg [63:0] channel16_due8;
 
 always #5 cpu_clk = ~cpu_clk;
 always #2 pcie_clk = ~pcie_clk;
@@ -53,6 +60,7 @@ nvme_ssd_latency #(.P_SLOT_TAG_WIDTH(SLOT_W)) dut (
 	.read_lsb_cycles(32'd7440), .read_msb_cycles(32'd10440),
 	.program_cycles(32'd46250), .fw_read_cycles(32'd100),
 	.fw_write_cycles(32'd200), .ch_xfer_4k_cycles(32'd808),
+	.channel_count(channel_count),
 	.in_cq_wr_en(in_en), .in_cq_wr_data0(in_data0),
 	.in_cq_wr_data1(in_data1), .in_cq_wr_rdy_n(in_rdy_n),
 	.out_cq_wr_en(out_en), .out_cq_wr_data0(out_data0),
@@ -61,18 +69,28 @@ nvme_ssd_latency #(.P_SLOT_TAG_WIDTH(SLOT_W)) dut (
 	.model_release_count(release_count)
 );
 
+task send_meta_segments;
+	input [SLOT_W-1:0] slot;
+	input [63:0] slba;
+	input write_cmd;
+	input [8:0] segments;
+	begin
+		@(posedge cpu_clk);
+		while(meta_rdy_n) @(posedge cpu_clk);
+		meta0 <= slba;
+		meta1 <= {44'b0, write_cmd, segments, slot};
+		meta_en <= 1;
+		@(posedge cpu_clk);
+		meta_en <= 0;
+	end
+endtask
+
 task send_meta;
 	input [SLOT_W-1:0] slot;
 	input [63:0] slba;
 	input write_cmd;
 	begin
-		@(posedge cpu_clk);
-		while(meta_rdy_n) @(posedge cpu_clk);
-		meta0 <= slba;
-		meta1 <= {44'b0, write_cmd, 9'd1, slot};
-		meta_en <= 1;
-		@(posedge cpu_clk);
-		meta_en <= 0;
+		send_meta_segments(slot, slba, write_cmd, 9'd1);
 	end
 endtask
 
@@ -146,21 +164,69 @@ initial begin
 		       parallel_due1 - parallel_due0);
 	wait(release_count == 4);
 
-	/* A 4 KiB write waits for frontend, channel transfer, and NAND program. */
-	send_meta(10'd21, 64'd12, 1'b1);
+	/* The first three 4 KiB units remain in the 16 KiB write buffer. */
+	send_meta(10'd20, 64'd12, 1'b1);
+	buffered_write_submit_cycle = pcie_cycles;
+	send_done(10'd20);
+	wait(release_count == 5);
+	buffered_write_release_latency = release_cycle - buffered_write_submit_cycle;
+	if(out_data0[SLOT_W+1:2] != 10'd20)
+		$fatal(1, "wrong released buffered-write slot");
+	if(buffered_write_release_latency < 150 || buffered_write_release_latency > 700)
+		$fatal(1, "buffered 4K write latency mismatch: %0d cycles",
+		       buffered_write_release_latency);
+
+	/* The fourth unit transfers and programs the complete 16 KiB flash page. */
+	send_meta(10'd21, 64'd15, 1'b1);
 	write_submit_cycle = pcie_cycles;
 	send_done(10'd21);
-	wait(release_count == 5);
+	wait(release_count == 6);
 	write_release_latency = release_cycle - write_submit_cycle;
 	if(out_data0[SLOT_W+1:2] != 10'd21)
 		$fatal(1, "wrong released write slot");
-	if(write_release_latency < 47200 || write_release_latency > 47700)
-		$fatal(1, "Samsung 4K program latency mismatch: %0d cycles",
+	if(write_release_latency < 49600 || write_release_latency > 50200)
+		$fatal(1, "Samsung 16K program latency mismatch: %0d cycles",
 		       write_release_latency);
 
-	$display("PASS: Samsung 970 PRO 4K read=%0d cycles, write=%0d cycles, same-LUN spacing=8248 cycles, different-channel delta=%0d cycles, bypass and CQ decoupling OK",
-		 first_release_latency, write_release_latency,
-		 parallel_due1 - parallel_due0);
+	/*
+	 * NVMeVirt aggregates the four 4 KiB units in one 16 KiB flash page:
+	 * one NAND sensing delay followed by a 16 KiB channel transfer.
+	 */
+	send_meta_segments(10'd30, 64'd64, 1'b0, 9'd4);
+	page_read_submit_cycle = pcie_cycles;
+	send_done(10'd30);
+	wait(release_count == 7);
+	page_read_release_latency = release_cycle - page_read_submit_cycle;
+	if(out_data0[SLOT_W+1:2] != 10'd30)
+		$fatal(1, "wrong released 16K read slot");
+	if(page_read_release_latency < 10500 || page_read_release_latency > 11200)
+		$fatal(1, "16K page read was not aggregated: %0d cycles",
+		       page_read_release_latency);
+
+	channel_count = 5'd16;
+	model_reset = 1;
+	repeat(4) @(posedge pcie_clk);
+	model_reset = 0;
+	repeat(4) @(posedge pcie_clk);
+	if(dut.r_channel_count_s2 != 5'd16)
+		$fatal(1, "16-channel configuration did not cross clock domains");
+	send_meta(10'd40, 64'd0, 1'b0);
+	send_done(10'd40);
+	send_meta(10'd41, 64'd32, 1'b0);
+	send_done(10'd41);
+	wait(submit_count == 2);
+	channel16_due0 = dut.r_due_bank0[5];
+	channel16_due8 = dut.r_due_bank1[5];
+	if(channel16_due8 < channel16_due0 ||
+	   channel16_due8 - channel16_due0 > 64'd32)
+		$fatal(1, "16-channel mapping serialized channels 0 and 8: delta=%0d",
+		       channel16_due8 - channel16_due0);
+	wait(release_count == 2);
+
+	$display("PASS: Samsung 970 PRO 4K read=%0d cycles, 16K page read=%0d cycles, buffered-write=%0d cycles, 16K program-write=%0d cycles, same-LUN spacing=8248 cycles, different-channel delta=%0d cycles, 16-channel delta=%0d cycles, bypass and CQ decoupling OK",
+		 first_release_latency, page_read_release_latency,
+		 buffered_write_release_latency, write_release_latency,
+		 parallel_due1 - parallel_due0, channel16_due8 - channel16_due0);
 	$finish;
 end
 

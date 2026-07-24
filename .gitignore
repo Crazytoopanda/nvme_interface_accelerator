@@ -13,6 +13,9 @@
 
 **/nvme_plddr64g_*
 !**/nvme_plddr64g_*.tcl
+**/nvme_plddr32g_*
+!**/nvme_plddr32g_*.tcl
+
 **/tmp
 **/.Xil
 

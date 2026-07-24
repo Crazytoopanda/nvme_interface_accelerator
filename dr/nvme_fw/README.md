@@ -40,9 +40,14 @@ IO path.
 
 ### SSD latency-model control
 
+The Samsung 970 PRO profile and its nanosecond-to-cycle conversion are defined
+in `ssd_config.h`; `ssd_config.c` owns the module parameters, validates the
+channel count, and programs the BAR2 SSD-model registers during controller
+rearm. `nvme_fw.c` only invokes the reset/apply interface.
+
 The SSD latency gate is independent of the hardware automation engine. Keep
 `fw_use_auto_hw=1` and set `fw_ssd_model_enable=0` to measure the unmodeled
-automation/PCIe datapath. This is the default:
+automation/PCIe datapath:
 
 ```sh
 sudo insmod dr/nvme_fw/build/nvme_fw.ko fw_ssd_model_enable=0
@@ -64,6 +69,7 @@ The default timing values use a 250 MHz PCIe user clock:
 | `fw_ssd_fw_read_cycles` | 100 | Firmware read overhead |
 | `fw_ssd_fw_write_cycles` | 200 | Firmware write overhead |
 | `fw_ssd_ch_xfer_4k_cycles` | 808 | NAND channel transfer per 4 KiB |
+| `fw_ssd_channel_count` | 8 | NAND channels; supported values: 1, 2, 4, 8, 16 |
 
 Values are module parameters, so no bitstream rebuild is required. They are
 written to the hardware only during the controller-disabled rearm sequence.

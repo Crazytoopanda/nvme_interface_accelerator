@@ -113,6 +113,7 @@ inside BAR2, for example BAR2 `+ 0x400` for `AUTO_REG_MAGIC`.
 | `0x080` | `0xA0000480` | `AUTO_REG_SSD_MODEL_STATUS` | RO | Timeline model status and pending-completion state. |
 | `0x084` | `0xA0000484` | `AUTO_REG_SSD_MODEL_SUBMIT_COUNT` | RO | Commands accepted by the SSD timeline model. |
 | `0x088` | `0xA0000488` | `AUTO_REG_SSD_MODEL_RELEASE_COUNT` | RO | DMA completions released to the CQ pipeline after their deadlines. |
+| `0x08c` | `0xA000048c` | `AUTO_REG_SSD_CHANNEL_COUNT` | RW | NAND channel count. Supported values are 1, 2, 4, 8, and 16; invalid writes select 8. |
 
 SSD timing profile:
 

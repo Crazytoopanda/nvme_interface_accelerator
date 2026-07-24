@@ -601,9 +601,12 @@ wire										w_dma_cmd_wr_en;
 wire	[C_M0_AXI_ADDR_WIDTH+23:0]			w_dma_cmd_wr_data0; //modified
 wire	[C_M0_AXI_ADDR_WIDTH+23:0]			w_dma_cmd_wr_data1; //modified
 wire										w_dma_cmd_wr_rdy_n;
+wire											w_s0_dma_cmd_wr_rdy_n;
 wire										w_s1_dma_cmd_wr_en;
 wire	[C_M0_AXI_ADDR_WIDTH+23:0]			w_s1_dma_cmd_wr_data0;
 wire	[C_M0_AXI_ADDR_WIDTH+23:0]			w_s1_dma_cmd_wr_data1;
+wire											w_s1_dma_cmd_wr_rdy_n;
+wire											w_auto_dma_cmd_wr_rdy_n;
 
 wire										w_auto_enable;
 wire										w_auto_reset;
@@ -625,6 +628,7 @@ wire	[31:0]							w_ssd_program_cycles;
 wire	[31:0]							w_ssd_fw_read_cycles;
 wire	[31:0]							w_ssd_fw_write_cycles;
 wire	[31:0]							w_ssd_ch_xfer_4k_cycles;
+wire	[4:0]							w_ssd_channel_count;
 wire	[31:0]							w_ssd_model_status;
 wire	[31:0]							w_ssd_model_submit_count;
 wire	[31:0]							w_ssd_model_release_count;
@@ -666,11 +670,17 @@ assign w_hcmd_sq_rd_en_mux = w_hcmd_sq_rd_en | w_auto_hcmd_sq_rd_en;
 assign w_hcmd_table_rd_addr = w_s1_hcmd_table_rd_active ? w_s1_hcmd_table_rd_addr :
 								 (w_auto_hcmd_table_rd_active ? w_auto_hcmd_table_rd_addr :
 								 w_s0_hcmd_table_rd_addr);
-assign w_dma_cmd_wr_en_mux = w_s1_dma_cmd_wr_en | w_auto_dma_cmd_wr_en | w_dma_cmd_wr_en;
+// Give firmware/direct traffic priority over automatic I/O so control-path DMA
+// cannot starve. Each losing producer sees backpressure and retries its request.
+assign w_dma_cmd_wr_en_mux = w_s1_dma_cmd_wr_en | w_dma_cmd_wr_en | w_auto_dma_cmd_wr_en;
 assign w_dma_cmd_wr_data0_mux = (w_s1_dma_cmd_wr_en == 1) ? w_s1_dma_cmd_wr_data0 :
-								  ((w_auto_dma_cmd_wr_en == 1) ? w_auto_dma_cmd_wr_data0 : w_dma_cmd_wr_data0);
+                                  ((w_dma_cmd_wr_en == 1) ? w_dma_cmd_wr_data0 : w_auto_dma_cmd_wr_data0);
 assign w_dma_cmd_wr_data1_mux = (w_s1_dma_cmd_wr_en == 1) ? w_s1_dma_cmd_wr_data1 :
-								  ((w_auto_dma_cmd_wr_en == 1) ? w_auto_dma_cmd_wr_data1 : w_dma_cmd_wr_data1);
+                                  ((w_dma_cmd_wr_en == 1) ? w_dma_cmd_wr_data1 : w_auto_dma_cmd_wr_data1);
+assign w_s1_dma_cmd_wr_rdy_n = w_dma_cmd_wr_rdy_n;
+assign w_s0_dma_cmd_wr_rdy_n = w_dma_cmd_wr_rdy_n | w_s1_dma_cmd_wr_en;
+assign w_auto_dma_cmd_wr_rdy_n = w_dma_cmd_wr_rdy_n |
+                                  w_s1_dma_cmd_wr_en | w_dma_cmd_wr_en;
 
 wire										w_bar2_reg_req_pcie;
 wire										w_bar2_reg_wr_pcie;
@@ -936,7 +946,7 @@ axi_sqe_window_inst0 (
 	.dma_cmd_wr_en					(w_s1_dma_cmd_wr_en),
 	.dma_cmd_wr_data0				(w_s1_dma_cmd_wr_data0),
 	.dma_cmd_wr_data1				(w_s1_dma_cmd_wr_data1),
-	.dma_cmd_wr_rdy_n				(w_dma_cmd_wr_rdy_n)
+	.dma_cmd_wr_rdy_n                (w_s1_dma_cmd_wr_rdy_n)
 );
 
 nvme_auto_io_engine #(
@@ -977,9 +987,9 @@ nvme_auto_io_engine_inst0 (
 	.dma_cmd_wr_en				(w_auto_dma_cmd_wr_en),
 	.dma_cmd_wr_data0			(w_auto_dma_cmd_wr_data0),
 	.dma_cmd_wr_data1			(w_auto_dma_cmd_wr_data1),
-	.dma_cmd_wr_rdy_n			(w_dma_cmd_wr_rdy_n),
+	.dma_cmd_wr_rdy_n            (w_auto_dma_cmd_wr_rdy_n),
 
-		.model_cmd_wr_en				(w_model_cmd_wr_en),
+	.model_cmd_wr_en				(w_model_cmd_wr_en),
 		.model_cmd_wr_data0			(w_model_cmd_wr_data0),
 		.model_cmd_wr_data1			(w_model_cmd_wr_data1),
 		.model_cmd_wr_rdy_n			(w_model_cmd_wr_rdy_n),
@@ -1128,7 +1138,7 @@ s_axi_top_inst0 (
 	.dma_cmd_wr_en							(w_dma_cmd_wr_en),
 	.dma_cmd_wr_data0						(w_dma_cmd_wr_data0),
 	.dma_cmd_wr_data1						(w_dma_cmd_wr_data1),
-	.dma_cmd_wr_rdy_n						(w_dma_cmd_wr_rdy_n),
+	.dma_cmd_wr_rdy_n                        (w_s0_dma_cmd_wr_rdy_n),
 
 		.bar2_reg_req							(w_bar2_reg_req_cpu),
 		.bar2_reg_wr							(w_bar2_reg_wr_cpu),
@@ -1262,6 +1272,7 @@ s_axi_top_inst0 (
 	.ssd_fw_read_cycles				(w_ssd_fw_read_cycles),
 	.ssd_fw_write_cycles				(w_ssd_fw_write_cycles),
 	.ssd_ch_xfer_4k_cycles			(w_ssd_ch_xfer_4k_cycles),
+	.ssd_channel_count				(w_ssd_channel_count),
 	.ssd_model_status					(w_ssd_model_status),
 	.ssd_model_submit_count			(w_ssd_model_submit_count),
 	.ssd_model_release_count			(w_ssd_model_release_count),
@@ -1569,6 +1580,7 @@ nvme_pcie_inst0(
 	.ssd_fw_read_cycles				(w_ssd_fw_read_cycles),
 	.ssd_fw_write_cycles				(w_ssd_fw_write_cycles),
 	.ssd_ch_xfer_4k_cycles			(w_ssd_ch_xfer_4k_cycles),
+	.ssd_channel_count				(w_ssd_channel_count),
 	.ssd_model_status					(w_ssd_model_status),
 	.ssd_model_submit_count			(w_ssd_model_submit_count),
 	.ssd_model_release_count			(w_ssd_model_release_count),

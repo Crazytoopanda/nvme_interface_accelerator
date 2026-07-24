@@ -86,6 +86,11 @@
 #error "Only BASE_SSD=SAMSUNG_970PRO is supported by the firmware SSD model now."
 #endif
 
+#if (NAND_CHANNELS < 1) || (NAND_CHANNELS > 16) || \
+    ((NAND_CHANNELS & (NAND_CHANNELS - 1)) != 0)
+#error "NAND_CHANNELS must be one of 1, 2, 4, 8, or 16."
+#endif
+
 /*
  * The RTL timeline uses PCIe user-clock cycles. Keep the SSD profile in
  * nanoseconds and derive register values here so changing the user clock or

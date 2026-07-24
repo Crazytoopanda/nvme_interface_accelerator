@@ -1,2 +1,3 @@
 ccflags-y += -DNVME_FW_DEBUG=$(NVME_FW_DEBUG)
 obj-m += nvme_fw.o
+nvme_fw-y := nvme_fw_core.o ssd_config.o
